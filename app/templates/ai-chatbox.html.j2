@@ -99,8 +99,15 @@
         </div>
     </div>
 
+    <script src="/advisor.js"></script>
     <script>
         var STORAGE_KEY = 'easepark-chat-messages';
+        try {
+            var parentPath = window.parent.location.pathname || '';
+            window.EASEPARK_DETAIL_BASE = parentPath.indexOf('/zh') === 0 ? '/zh/carpark/' : '/carpark/';
+        } catch (error) {
+            window.EASEPARK_DETAIL_BASE = '/zh/carpark/';
+        }
 
         function loadMessages() {
             try {
@@ -148,14 +155,9 @@
             chatInput.value = '';
             sendButton.disabled = true;
 
-            fetch('/send_message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: message })
-            })
-            .then(function (response) { return response.json(); })
-            .then(function (data) {
-                appendMessage('ai-message', '助手：', data.reply || data.error || '暫時未能回答。');
+            window.EasePark.answer(message)
+            .then(function (reply) {
+                appendMessage('ai-message', '助手：', reply || '暫時未能回答。');
             })
             .catch(function () {
                 appendMessage('ai-message', '助手：', '連線失敗，請再試一次。');
