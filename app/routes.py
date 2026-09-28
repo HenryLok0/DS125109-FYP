@@ -10,6 +10,7 @@ from app.forms import zhLoginForm, LoginForm, RegistrationForm, zhRegistrationFo
     ResetPasswordRequestForm, zhResetPasswordRequestForm, ResetPasswordForm, zhResetPasswordForm, ImageForm, AddProductForm,AddCategoryForm,AddBrandForm,AddMeetupForm,AddConditionForm
 from app.models import User, Post, Image, Product,Category,Brand,Area,Distric,MTR,Meetup,Condition
 from app.email import send_password_reset_email
+from app.govdata import fetch_en_carparks, fetch_zh_carparks, read_excel_rows
 from werkzeug.utils import secure_filename
 import json
 import xml.etree.ElementTree as ET
@@ -18,6 +19,20 @@ from google import genai
 
 import pandas as pd
 import os
+
+def _safe_en_carparks():
+    try:
+        return fetch_en_carparks()
+    except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+        return []
+
+
+def _safe_zh_carparks():
+    try:
+        return fetch_zh_carparks()
+    except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+        return []
+
 
 @app.route('/favicon.ico')
 def favicon():
@@ -30,60 +45,42 @@ def favicon():
 @app.route('/zh/metered_parking_spaces_new_territories')
 def metered_parking_spaces_new_territories_chi():
     url = "https://www.td.gov.hk/filemanager/tc/content_5036/opendata/nt_parking_spaces_chi.xlsx"
-    df = pd.read_excel(url)
- 
-     # 將數據轉換為字典列表
-    parking_spaces = df.to_dict(orient='records')
+    parking_spaces = read_excel_rows(url)
  
     return render_template('zh.metered_parking_spaces_new_territories.html.j2', parking_spaces=parking_spaces)
  
 @app.route('/metered_parking_spaces_new_territories')
 def metered_parking_spaces_new_territories():
     url = "https://www.td.gov.hk/filemanager/en/content_5036/opendata/nt_parking_spaces_eng.xlsx"
-    df = pd.read_excel(url)
- 
-     # 將數據轉換為字典列表
-    parking_spaces = df.to_dict(orient='records')
+    parking_spaces = read_excel_rows(url)
  
     return render_template('metered_parking_spaces_new_territories.html.j2', parking_spaces=parking_spaces)
  
 @app.route('/zh/metered_parking_spaces_kowloon')
 def metered_parking_spaces_kowloon_chi():
     url = "https://www.td.gov.hk/filemanager/tc/content_5036/opendata/kln_parking_spaces_chi.xlsx"
-    df = pd.read_excel(url)
- 
-     # 將數據轉換為字典列表
-    parking_spaces = df.to_dict(orient='records')
+    parking_spaces = read_excel_rows(url)
  
     return render_template('zh.metered_parking_spaces_kowloon.html.j2', parking_spaces=parking_spaces)
  
 @app.route('/metered_parking_spaces_kowloon')
 def metered_parking_spaces_kowloon():
     url = "https://www.td.gov.hk/filemanager/en/content_5036/opendata/kln_parking_spaces_eng.xlsx"
-    df = pd.read_excel(url)
- 
-     # 將數據轉換為字典列表
-    parking_spaces = df.to_dict(orient='records')
+    parking_spaces = read_excel_rows(url)
  
     return render_template('metered_parking_spaces_kowloon.html.j2', parking_spaces=parking_spaces)
  
 @app.route('/zh/metered_parking_spaces_hong_kong_island')
 def metered_parking_spaces_hong_kong_island_chi():
     url = "https://www.td.gov.hk/filemanager/tc/content_5036/opendata/hki_parking_spaces_chi.xlsx"
-    df = pd.read_excel(url)
- 
-     # 將數據轉換為字典列表
-    parking_spaces = df.to_dict(orient='records')
+    parking_spaces = read_excel_rows(url)
  
     return render_template('zh.metered_parking_spaces_hong_kong_island.html.j2', parking_spaces=parking_spaces)
  
 @app.route('/metered_parking_spaces_hong_kong_island')
 def mmetered_parking_spaces_hong_kong_island():
     url = "https://www.td.gov.hk/filemanager/en/content_5036/opendata/hki_parking_spaces_eng.xlsx"
-    df = pd.read_excel(url)
- 
-     # 將數據轉換為字典列表
-    parking_spaces = df.to_dict(orient='records')
+    parking_spaces = read_excel_rows(url)
  
     return render_template('metered_parking_spaces_hong_kong_island.html.j2', parking_spaces=parking_spaces)
 
@@ -398,42 +395,11 @@ def ai_chatbox():
 
 @app.route('/')
 def index():
-    response1 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
-    data1 = response1.json()
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
+    carparks = _safe_en_carparks()
 
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    for item in data2['results']:
-        park_id = item['park_Id']
-        vacancy_info[park_id] = {
-            'privateCar': item.get('privateCar', [{}])[0],
-            'motorCycle': item.get('motorCycle', [{}])[0],
-            'LGV': item.get('LGV', [{}])[0],
-            'HGV': item.get('HGV', [{}])[0],
-            'coach': item.get('coach', [{}])[0]
-        }
-
-    # Combine the data by adding vacancy information to the car park data
-    for carpark in data1['results']:
-        park_id = carpark['park_Id']
-        if park_id in vacancy_info:
-            for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach']:
-                if vehicle_type in vacancy_info[park_id]:
-                    carpark[f'{vehicle_type}_vacancy'] = vacancy_info[park_id][vehicle_type].get('vacancy', 'N/A')
-                    carpark[f'{vehicle_type}_vacancy_type'] = vacancy_info[park_id][vehicle_type].get('vacancy_type', '')
-
-        # Example: Check for hourly charges for private cars
-        if 'privateCar' in carpark and 'hourlyCharges' in carpark['privateCar']:
-            carpark['price'] = carpark['privateCar']['hourlyCharges'][0]['price']
-        else:
-            carpark['price'] = 'N/A'
-
-    # Separate favorite carparks from others
     favorite_carparks = session.get('favorite_carparks', [])
-    favorite_carparks_data = [carpark for carpark in data1['results'] if carpark['park_Id'] in favorite_carparks]
-    other_carparks_data = [carpark for carpark in data1['results'] if carpark['park_Id'] not in favorite_carparks]
+    favorite_carparks_data = [carpark for carpark in carparks if carpark.get('park_Id') in favorite_carparks]
+    other_carparks_data = [carpark for carpark in carparks if carpark.get('park_Id') not in favorite_carparks]
 
     return render_template('index.html.j2', favorite_carparks=favorite_carparks_data, carparks=other_carparks_data)
 
@@ -455,39 +421,11 @@ def toggle_favorite(park_id):
 @app.route('/zh')
 @app.route('/zh<path:path>')
 def zh(path=''):
-    response1 = requests.get('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json')
-    data1 = response1.content.decode('utf-8-sig')
-    data1 = json.loads(data1)
+    carparks = _safe_zh_carparks()
 
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    if 'results' in data2:
-        for item in data2['results']:
-            park_id = item['park_Id']
-            vacancy_info[park_id] = {
-                'privateCar': item.get('privateCar', [{}])[0],
-                'motorCycle': item.get('motorCycle', [{}])[0],
-                'LGV': item.get('LGV', [{}])[0],
-                'HGV': item.get('HGV', [{}])[0],
-                'coach': item.get('coach', [{}])[0]
-            }
-
-    # Combine the data by adding vacancy information to the car park data
-    for carpark in data1['car_park']:
-        park_id = carpark['park_id']
-        if park_id in vacancy_info:
-            for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach']:
-                if vehicle_type in vacancy_info[park_id]:
-                    carpark[f'{vehicle_type}_vacancy'] = vacancy_info[park_id][vehicle_type].get('vacancy', 'N/A')
-                    carpark[f'{vehicle_type}_vacancy_type'] = vacancy_info[park_id][vehicle_type].get('vacancy_type', '')
-
-    # Separate favorite carparks from others
     favorite_carparks = session.get('favorite_carparks', [])
-    favorite_carparks_data = [carpark for carpark in data1['car_park'] if carpark['park_id'] in favorite_carparks]
-    other_carparks_data = [carpark for carpark in data1['car_park'] if carpark['park_id'] not in favorite_carparks]
+    favorite_carparks_data = [carpark for carpark in carparks if carpark.get('park_id') in favorite_carparks]
+    other_carparks_data = [carpark for carpark in carparks if carpark.get('park_id') not in favorite_carparks]
 
     return render_template('zh.html.j2', favorite_carparks=favorite_carparks_data, carparks=other_carparks_data)
 
@@ -508,76 +446,13 @@ def translate_status(status):
 
 @app.route('/carparkinfo/<district>')
 def carparkinfo(district):
-    response1 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
-    data1 = response1.json()
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
-
-    # Filter carparks by district
-    carparks = [cp for cp in data1['results'] if cp['district'] == district]
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    for item in data2['results']:
-        park_id = item['park_Id']
-        vacancy_info[park_id] = {
-            'privateCar': item.get('privateCar', [{}])[0],
-            'motorCycle': item.get('motorCycle', [{}])[0],
-            'LGV': item.get('LGV', [{}])[0],
-            'HGV': item.get('HGV', [{}])[0],
-            'coach': item.get('coach', [{}])[0]
-        }
-
-    # Combine the data by adding vacancy information to the car park data
-    for carpark in carparks:
-        park_id = carpark['park_Id']
-        if park_id in vacancy_info:
-            for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach']:
-                if vehicle_type in vacancy_info[park_id]:
-                    carpark[f'{vehicle_type}_vacancy'] = vacancy_info[park_id][vehicle_type].get('vacancy', 'N/A')
-                    carpark[f'{vehicle_type}_vacancy_type'] = vacancy_info[park_id][vehicle_type].get('vacancy_type', '')
-
-    # Render the template with filtered carparks
+    carparks = [cp for cp in _safe_en_carparks() if cp.get('district') == district]
     return render_template('carparkinfo.html.j2', carparks=carparks, district=district)
 
 @app.route('/zh/carparkinfo/<district>')
 def zh_carparkinfo(district):
-    response1 = requests.get('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json')
-    data1 = response1.content.decode('utf-8-sig')
-    data1 = json.loads(data1)
-
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.content.decode('utf-8-sig')
-    data2 = json.loads(data2)
-
-    # Filter carparks by district
-    carparks = [cp for cp in data1['car_park'] if cp['district_en'] == district]
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    for item in data2['results']:
-        park_id = item['park_Id']
-        vacancy_info[park_id] = {
-            'privateCar': item.get('privateCar', [{}])[0],
-            'motorCycle': item.get('motorCycle', [{}])[0],
-            'LGV': item.get('LGV', [{}])[0],
-            'HGV': item.get('HGV', [{}])[0],
-            'coach': item.get('coach', [{}])[0]
-        }
-
-    # Combine the data by adding vacancy information to the car park data
-    for carpark in carparks:
-        park_id = carpark['park_id']
-        if park_id in vacancy_info:
-            for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach']:
-                if vehicle_type in vacancy_info[park_id]:
-                    carpark[f'{vehicle_type}_vacancy'] = vacancy_info[park_id][vehicle_type].get('vacancy', 'N/A')
-                    carpark[f'{vehicle_type}_vacancy_type'] = vacancy_info[park_id][vehicle_type].get('vacancy_type', '')
-
-    # Get the Chinese district name
+    carparks = [cp for cp in _safe_zh_carparks() if cp.get('district_en') == district]
     district_tc = carparks[0]['district_tc'] if carparks else district
-
-    # Render the template with filtered carparks
     return render_template('zh.carparkinfo.html.j2', carparks=carparks, district_tc=district_tc)
 
 @app.route('/carparkinfo')
@@ -708,33 +583,8 @@ if __name__ == '__main__':
 
 @app.route('/hong_kong_island')
 def hong_kong_island():
-    response1 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
-    data1 = response1.json()
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    for item in data2['results']:
-        park_id = item['park_Id']
-        vacancy_info[park_id] = {
-            'privateCar_vacancy': item['privateCar'][0]['vacancy'] if 'privateCar' in item else 'N/A',
-            'motorCycle_vacancy': item['motorCycle'][0]['vacancy'] if 'motorCycle' in item else 'N/A',
-            'LGV_vacancy': item['LGV'][0]['vacancy'] if 'LGV' in item else 'N/A',
-            'HGV_vacancy': item['HGV'][0]['vacancy'] if 'HGV' in item else 'N/A',
-            'coach_vacancy': item['coach'][0]['vacancy'] if 'coach' in item else 'N/A'
-        }
-
-    # Filter carparks by districts in Hong Kong Island
     hk_island_districts = ['Central & Western', 'Wan Chai', 'Eastern', 'Southern']
-    carparks = []
-    for carpark in data1['results']:
-        if carpark['district'] in hk_island_districts:
-            park_id = carpark['park_Id']
-            if park_id in vacancy_info:
-                carpark.update(vacancy_info[park_id])
-            carparks.append(carpark)
-
+    carparks = [cp for cp in _safe_en_carparks() if cp.get('district') in hk_island_districts]
     return render_template('hong_kong_island.html.j2', carparks=carparks)
     response = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
     data = response.json()
@@ -747,71 +597,15 @@ def hong_kong_island():
 
 @app.route('/zh/hong_kong_island')
 def zh_hong_kong_island():
-    response1 = requests.get('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json')
-    data1 = response1.content.decode('utf-8-sig')
-    data1 = json.loads(data1)
-
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    if 'results' in data2:
-        for item in data2['results']:
-            park_id = item['park_Id']
-            vacancy_info[park_id] = {
-                'privateCar': item.get('privateCar', [{}])[0],
-                'motorCycle': item.get('motorCycle', [{}])[0],
-                'LGV': item.get('LGV', [{}])[0],
-                'HGV': item.get('HGV', [{}])[0],
-                'coach': item.get('coach', [{}])[0]
-            }
-
-    # Filter carparks by districts in Hong Kong Island
     hk_island_districts = ['Central & Western', 'Wan Chai', 'Eastern', 'Southern']
-    carparks = []
-    for carpark in data1['car_park']:
-        if carpark.get('district_en') in hk_island_districts:
-            park_id = carpark['park_id']
-            if park_id in vacancy_info:
-                for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach']:
-                    if vehicle_type in vacancy_info[park_id]:
-                        carpark[f'{vehicle_type}_vacancy'] = vacancy_info[park_id][vehicle_type].get('vacancy', 'N/A')
-                        carpark[f'{vehicle_type}_vacancy_type'] = vacancy_info[park_id][vehicle_type].get('vacancy_type', '')
-            carparks.append(carpark)
-
+    carparks = [cp for cp in _safe_zh_carparks() if cp.get('district_en') in hk_island_districts]
     return render_template('zh.hong_kong_island.html.j2', carparks=carparks)
 
 
 @app.route('/kowloon')
 def kowloon():
-    response1 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
-    data1 = response1.json()
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    for item in data2['results']:
-        park_id = item['park_Id']
-        vacancy_info[park_id] = {
-            'privateCar_vacancy': item['privateCar'][0]['vacancy'] if 'privateCar' in item else 'N/A',
-            'motorCycle_vacancy': item['motorCycle'][0]['vacancy'] if 'motorCycle' in item else 'N/A',
-            'LGV_vacancy': item['LGV'][0]['vacancy'] if 'LGV' in item else 'N/A',
-            'HGV_vacancy': item['HGV'][0]['vacancy'] if 'HGV' in item else 'N/A',
-            'coach_vacancy': item['coach'][0]['vacancy'] if 'coach' in item else 'N/A'
-        }
-
-    # Filter carparks by districts in kowloon
     kowloon_districts = ['Yau Tsim Mong', 'Sham Shui Po', 'Kowloon City', 'Wong Tai Sin', 'Kwun Tong']
-    carparks = []
-    for carpark in data1['results']:
-        if carpark['district'] in kowloon_districts:
-            park_id = carpark['park_Id']
-            if park_id in vacancy_info:
-                carpark.update(vacancy_info[park_id])
-            carparks.append(carpark)
-
+    carparks = [cp for cp in _safe_en_carparks() if cp.get('district') in kowloon_districts]
     return render_template('kowloon.html.j2', carparks=carparks)
     response = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
     data = response.json()
@@ -824,74 +618,14 @@ def kowloon():
 
 @app.route('/zh/kowloon')
 def zh_kowloon():
-    response1 = requests.get('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json')
-    data1 = response1.content.decode('utf-8-sig')
-    data1 = json.loads(data1)
-
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    if 'results' in data2:
-        for item in data2['results']:
-            park_id = item['park_Id']
-            vacancy_info[park_id] = {
-                'privateCar': item.get('privateCar', [{}])[0],
-                'motorCycle': item.get('motorCycle', [{}])[0],
-                'LGV': item.get('LGV', [{}])[0],
-                'HGV': item.get('HGV', [{}])[0],
-                'coach': item.get('coach', [{}])[0]
-            }
-
-    # Filter carparks by districts in Kowloon
     kowloon_districts = ['Yau Tsim Mong', 'Sham Shui Po', 'Kowloon City', 'Wong Tai Sin', 'Kwun Tong']
-    carparks = []
-    for carpark in data1['car_park']:
-        if carpark.get('district_en') in kowloon_districts:
-            park_id = carpark['park_id']
-            if park_id in vacancy_info:
-                for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach']:
-                    if vehicle_type in vacancy_info[park_id]:
-                        carpark[f'{vehicle_type}_vacancy'] = vacancy_info[park_id][vehicle_type].get('vacancy', 'N/A')
-                        carpark[f'{vehicle_type}_vacancy_type'] = vacancy_info[park_id][vehicle_type].get('vacancy_type', '')
-            carparks.append(carpark)
-
-    # Log the carparks data for debugging
-    for carpark in carparks:
-        app.logger.debug(f"Carpark ID: {carpark.get('park_id')}, Name: {carpark.get('name')}, Address: {carpark.get('displayAddress')}")
-
+    carparks = [cp for cp in _safe_zh_carparks() if cp.get('district_en') in kowloon_districts]
     return render_template('zh.kowloon.html.j2', carparks=carparks)
 
 @app.route('/new_territories')
 def new_territories():
-    response1 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
-    data1 = response1.json()
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    for item in data2['results']:
-        park_id = item['park_Id']
-        vacancy_info[park_id] = {
-            'privateCar_vacancy': item['privateCar'][0]['vacancy'] if 'privateCar' in item else 'N/A',
-            'motorCycle_vacancy': item['motorCycle'][0]['vacancy'] if 'motorCycle' in item else 'N/A',
-            'LGV_vacancy': item['LGV'][0]['vacancy'] if 'LGV' in item else 'N/A',
-            'HGV_vacancy': item['HGV'][0]['vacancy'] if 'HGV' in item else 'N/A',
-            'coach_vacancy': item['coach'][0]['vacancy'] if 'coach' in item else 'N/A'
-        }
-
-    # Filter carparks by districts in new_territories
     new_territories_districts = ['Kwai Tsing', 'Tsuen Wan', 'Yuen Long', 'Tuen Mun', 'North', 'Tai Po', 'Sha Tin', 'Sai Kung', 'Islands']
-    carparks = []
-    for carpark in data1['results']:
-        if carpark['district'] in new_territories_districts:
-            park_id = carpark['park_Id']
-            if park_id in vacancy_info:
-                carpark.update(vacancy_info[park_id])
-            carparks.append(carpark)
-
+    carparks = [cp for cp in _safe_en_carparks() if cp.get('district') in new_territories_districts]
     return render_template('new_territories.html.j2', carparks=carparks)
     response = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
     data = response.json()
@@ -904,39 +638,8 @@ def new_territories():
 
 @app.route('/zh/new_territories')
 def zh_new_territories():
-    response1 = requests.get('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json')
-    data1 = response1.content.decode('utf-8-sig')
-    data1 = json.loads(data1)
-
-    response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-    data2 = response2.json()
-
-    # Create a dictionary to map park_Id to vacancy information for each vehicle type
-    vacancy_info = {}
-    if 'results' in data2:
-        for item in data2['results']:
-            park_id = item['park_Id']
-            vacancy_info[park_id] = {
-                'privateCar': item.get('privateCar', [{}])[0],
-                'motorCycle': item.get('motorCycle', [{}])[0],
-                'LGV': item.get('LGV', [{}])[0],
-                'HGV': item.get('HGV', [{}])[0],
-                'coach': item.get('coach', [{}])[0]
-            }
-
-    # Filter carparks by districts in New Territories
     new_territories_districts = ['Islands', 'Kwai Tsing', 'North', 'Sai Kung', 'Sha Tin', 'Tai Po', 'Tsuen Wan', 'Tuen Mun', 'Yuen Long']
-    carparks = []
-    for carpark in data1['car_park']:
-        if carpark.get('district_en') in new_territories_districts:
-            park_id = carpark['park_id']
-            if park_id in vacancy_info:
-                for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach']:
-                    if vehicle_type in vacancy_info[park_id]:
-                        carpark[f'{vehicle_type}_vacancy'] = vacancy_info[park_id][vehicle_type].get('vacancy', 'N/A')
-                        carpark[f'{vehicle_type}_vacancy_type'] = vacancy_info[park_id][vehicle_type].get('vacancy_type', '')
-            carparks.append(carpark)
-
+    carparks = [cp for cp in _safe_zh_carparks() if cp.get('district_en') in new_territories_districts]
     return render_template('zh.new_territories.html.j2', carparks=carparks)
 
 @app.route('/login', methods=['GET', 'POST'])
