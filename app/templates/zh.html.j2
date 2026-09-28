@@ -1,9 +1,6 @@
 {% extends "zh.base.html.j2" %}
 {% import 'bootstrap/wtf.html' as wtf %}
-{% block head %}
-<title>泊易香港 (EaseParkHK)</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-{% endblock %}
+{% block title %}泊易香港 (EaseParkHK){% endblock %}
 {% block app_content %}
 {% include "zh.special_traffic_news.html.j2" %}
     <div class="container mt-5">
@@ -250,14 +247,16 @@
             sortTable(3); // 預設按空位排序
             document.querySelector('th:nth-child(4)').click(); // 自動點擊空位排序按鈕
             
-            // 檢查暗黑模式狀態並應用
-            if (localStorage.getItem('darkMode') === 'enabled') {
+            const isDarkMode = localStorage.getItem('darkMode') === 'enabled';
+            if (isDarkMode) {
                 document.body.classList.add('dark-mode');
-                applyDarkModeStyles(true);
+            } else {
+                document.body.classList.remove('dark-mode');
             }
+            applyDarkModeStyles(isDarkMode);
         };
         
-        // 夜間模式樣式應用功能
+        // Apply or clear night-mode inline styles so light mode has no leftovers
         function applyDarkModeStyles(isDarkMode) {
             // 樣式表單控件
             const formControls = document.querySelectorAll('select.form-control, input.form-control, textarea.form-control');
@@ -403,7 +402,36 @@
             margin: 0;
         }
         
-        /* 暗黑模式樣式 - 聊天框 */
+        /* Light mode: thead-dark and related leftovers must stay light */
+        body:not(.dark-mode) .thead-dark th {
+            background-color: #f5f5f5 !important;
+            color: #333333 !important;
+            border-color: #ddd !important;
+        }
+
+        body:not(.dark-mode) .table-striped > tbody > tr:nth-of-type(odd) {
+            background-color: #f9f9f9;
+            color: #333333;
+        }
+
+        body:not(.dark-mode) .table-striped > tbody > tr:nth-of-type(even) {
+            background-color: #ffffff;
+            color: #333333;
+        }
+
+        body:not(.dark-mode) .form-control {
+            background-color: #ffffff !important;
+            color: #333333 !important;
+            border-color: #ccc !important;
+        }
+
+        body:not(.dark-mode) label,
+        body:not(.dark-mode) h1,
+        body:not(.dark-mode) h2 {
+            color: #333333;
+        }
+
+        /* Dark mode styles - chatbox */
         body.dark-mode .chatbox-btn {
             background-color: #2a579a;
         }

@@ -3,6 +3,36 @@
 {% block styles %}
     {{ super() }}
     <style>
+    /* Light mode: reset dark leftovers on car park tables */
+    body:not(.dark-mode) {
+      background-color: #ffffff;
+      color: #333333;
+    }
+
+    body:not(.dark-mode) .thead-dark th {
+      background-color: #f5f5f5 !important;
+      color: #333333 !important;
+      border-color: #ddd !important;
+    }
+
+    body:not(.dark-mode) .table,
+    body:not(.dark-mode) .table > tbody > tr > td,
+    body:not(.dark-mode) .table > thead > tr > th {
+      background-color: #ffffff;
+      color: #333333;
+      border-color: #ddd;
+    }
+
+    body:not(.dark-mode) .table-striped > tbody > tr:nth-of-type(odd) {
+      background-color: #f9f9f9;
+    }
+
+    body:not(.dark-mode) .form-control {
+      background-color: #ffffff !important;
+      color: #333333 !important;
+      border-color: #ccc !important;
+    }
+
     /* Additional night mode styles for specific components */
     body.dark-mode {
       background-color: #121212;

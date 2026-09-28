@@ -1,9 +1,6 @@
 {% extends "base.html.j2" %}
 {% import 'bootstrap/wtf.html' as wtf %}
-{% block head %}
-<title>EaseParkHK</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-{% endblock %}
+{% block title %}EaseParkHK{% endblock %}
 {% block app_content %}
 {% include "special_traffic_news.html.j2" %}
     <div class="container mt-5">
