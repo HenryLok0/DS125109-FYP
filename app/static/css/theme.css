@@ -793,6 +793,7 @@ html.dark-mode .alert-danger, body.dark-mode .alert-danger { background: #3a1f1f
   border: 1px solid var(--ep-line);
   border-radius: 16px;
   display: none;
+  flex-direction: column;
   z-index: 1050;
   box-shadow: var(--ep-shadow);
   overflow: hidden;
@@ -802,12 +803,31 @@ html.dark-mode .alert-danger, body.dark-mode .alert-danger { background: #3a1f1f
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex: 0 0 auto;
   padding: 10px 12px;
   background: var(--ep-primary);
   color: #fff;
 }
 
-.chatbox-header h5 { margin: 0; color: #fff; }
+.chatbox-header h5 { margin: 0; color: #fff; font-size: 16px; }
+
+.chatbox-header .btn {
+  background: #fff;
+  color: var(--ep-primary);
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-weight: 600;
+}
+
+#chatbox-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  display: block;
+  background: #fff;
+}
 
 /* Metered parking filters */
 .meter-filters {

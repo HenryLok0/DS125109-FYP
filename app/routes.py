@@ -5,18 +5,17 @@ from flask_login import login_user, logout_user, current_user, login_required
 from urllib.parse import urlparse
 from werkzeug.utils import secure_filename
 from flask_babel import _, get_locale
-from app import app, db, client
+from app import app, db
 from app.forms import zhLoginForm, LoginForm, RegistrationForm, zhRegistrationForm, EditProfileForm, zhEditProfileForm, PostForm, AddAreaForm, AddDistricForm,AddMTRForm, \
     ResetPasswordRequestForm, zhResetPasswordRequestForm, ResetPasswordForm, zhResetPasswordForm, ImageForm, AddProductForm,AddCategoryForm,AddBrandForm,AddMeetupForm,AddConditionForm
 from app.models import User, Post, Image, Product,Category,Brand,Area,Distric,MTR,Meetup,Condition
 from app.email import send_password_reset_email
 from app.govdata import fetch_en_carparks, fetch_zh_carparks, read_excel_rows
+from app.parking_advisor import answer_parking_question
 from werkzeug.utils import secure_filename
 import json
 import xml.etree.ElementTree as ET
 import logging
-from google import genai
-
 import pandas as pd
 import os
 
@@ -88,167 +87,24 @@ def mmetered_parking_spaces_hong_kong_island():
 def privacy_policy():
     return render_template('privacy_policy.html.j2')
 
-def is_chinese(text):
-    return any('\u4e00' <= char <= '\u9fff' for char in text)
-
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    data = request.get_json()
-    message = data.get('message')
-    mode = data.get('mode', 'normal')  # Default mode is 'normal'
-
-    # Default prompt with instructions for handling car park queries
-    default_prompt = (
-        "You have access to the Ease Park Hong Kong car park information API. You are not a programming language AI maker, don't include programming language in responses to users. Here are the key endpoints and their purposes:\n"
-        "1. https://api.data.gov.hk/v1/carpark-info-vacancy: Provides information on car park names.\n"
-        "2. https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US: Provides real-time vacancy information for private cars, motorcycles, LGVs, HGVs, and coaches.\n"
-        "Note: These endpoints use 'park_Id' to connect car park names with their respective vacancy data.\n"
-        "When a user provides a car park name, you should:\n"
-        "1. Search for the park ID using the car park name in the endpoint: https://api.data.gov.hk/v1/carpark-info-vacancy.\n"
-        "2. Use the park ID to retrieve live vacancy information from the endpoint: https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US.\n"
-        "3. Extract and present the vacancy information for private cars, motorcycles, LGVs, HGVs, and coaches.\n"
-        "Example Response: 'Vacancy information for 山頂廣場 (The Peak Galleria): Private Cars: 24 spaces available out of 45 total. Motorcycles: 1 space available out of 1 total. LGVs: 0 spaces available out of 0 total. HGVs: 0 spaces available out of 0 total. Coaches: 0 spaces available out of 0 total.'\n"
-        "If the user requests additional information about the car park from https://resource.data.one.gov.hk/td/carpark/basic_info_all.json, you should:\n"
-        "1. Fetch the car park details from the provided JSON endpoint.\n"
-        "2. Extract and present the requested information (e.g., website, contact number, address, etc.).\n"
-        "Example Response: 'Information for 天晴邨第一期停車場 (Phase 1 Carpark of Tin Ching Estate): Website: [website_en]'\n"
-        "If the exact car park name cannot be found, respond with '[[NOT FOUND]]' followed by a list of the 5 most similar car park names for the user to choose from.\n"
-        "Example Response: '[[NOT FOUND]] The car park name you provided could not be found. Here are 5 similar car park names: 1. 天晴邨第一期停車場, 2. 天晴邨第二期停車場, 3. 天晴邨第三期停車場, 4. 天晴邨第四期停車場, 5. 天晴邨第五期停車場.'\n"
-        "Ensure the final response contains information for private cars, motorcycles, LGVs, HGVs, coaches when applicable.\n"
-        "Please ensure the response is clear, concise, and formatted in a user-friendly manner.\n"
-    )
-
+    payload = request.get_json(silent=True) or {}
+    message = (payload.get('message') or '').strip()
     if not message:
         return jsonify({'error': 'No message provided'}), 400
 
     try:
-        # Handle car park mode
-        if mode == 'car_park':
-            # Check if it's a simple car park query
-            query_prompt = f"這只是在查詢單一個停車場的空缺或資訊的嗎？,只是回應(是)或(否)\: {message}"
-            query_response = client.models.generate_content(
-                model="gemini-2.0-flash", contents=query_prompt
-            )
+        carparks = fetch_zh_carparks()
+    except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+        try:
+            carparks = fetch_en_carparks()
+        except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+            carparks = []
 
-            if '是' in query_response.text:
-                # Select car park info source based on language
-                if is_chinese(message):
-                    response1 = requests.get('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json')
-                else:
-                    response1 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
-                data1 = response1.json()
+    reply = answer_parking_question(message, carparks)
+    return jsonify({'reply': reply})
 
-                # Fetch vacancy info
-                response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-                data2 = response2.json()
-
-                # Combine data for the AI
-                combined_data = {
-                    'carpark_info': data1,
-                    'vacancy_info': data2
-                }
-                prompt = f"{default_prompt}\nMessage: {message}\nCarpark Info: {combined_data}"
-
-                # Retry loop for generating response (max 5 attempts)
-                max_attempts = 5
-                for attempt in range(max_attempts):
-                    # Generate initial response
-                    response = client.models.generate_content(
-                        model="gemini-2.0-flash", contents=prompt
-                    )
-                    initial_response = response.text
-
-                    # Check if car park was not found
-                    if "[[NOT FOUND]]" in initial_response:
-                        final_response_text = initial_response.replace("[[NOT FOUND]]", "此停車場未找到關鍵字。")
-                        break  # Exit loop if we get a valid "not found" response
-                    else:
-                        # Refine the response
-                        refinement_prompt = (
-                            "Please refine the following response to only include the necessary vacancy and data information for the user:\n"
-                            "You are not a programming language maker, delete all programming language, only keep user need data\n"
-                            f"{initial_response}"
-                        )
-                        refinement_response = client.models.generate_content(
-                            model="gemini-2.0-flash", contents=refinement_prompt
-                        )
-                        final_response_text = refinement_response.text
-
-                        # Break if response is not "(undefined)"
-                        if final_response_text.strip() != "(undefined)":
-                            break
-                        else:
-                            logging.warning(f"Attempt {attempt + 1}/{max_attempts}: Response was '(undefined)', retrying...")
-                            if attempt == max_attempts - 1:
-                                # After max attempts, generate similar car parks
-                                similarity_prompt = (
-                                    f"根據以下停車場名稱 '{message}'，從以下數據中找到最多5個名稱相似或地理位置相近的停車場名稱，並以繁體中文列出:\n"
-                                    f"Carpark Info: {data1}\n"
-                                    "只需提供最多5個停車場名稱的編號列表，例如:\n"
-                                    "1. 山頂廣場\n2. 山頂停車場\n3. 中環廣場\n4. 銅鑼灣停車場\n5. 尖沙咀碼頭停車場"
-                                )
-                                try:
-                                    similarity_response = client.models.generate_content(
-                                        model="gemini-2.0-flash", contents=similarity_prompt
-                                    )
-                                    similar_car_parks_text = similarity_response.text
-                                except Exception as e:
-                                    logging.error(f"Error generating similar car parks: {str(e)}")
-                                    similar_car_parks_text = "未能生成相似的停車場列表。"
-                                final_response_text = (
-                                    "此停車場未找到關鍵字。以下是5個相似的停車場:\n"
-                                    f"{similar_car_parks_text}"
-                                )
-
-                # Translate to Traditional Chinese if the user's message is in Chinese
-                if is_chinese(message):
-                    translation_prompt = (
-                        "請將以下內容翻譯成繁體中文，並確保自然流暢且不讓使用者察覺是翻譯:\n"
-                        f"{final_response_text}"
-                    )
-                    try:
-                        translation_response = client.models.generate_content(
-                            model="gemini-2.0-flash", contents=translation_prompt
-                        )
-                        final_response_text = translation_response.text
-                    except Exception as e:
-                        logging.error(f"Error translating response: {str(e)}")
-                        # Keep original response if translation fails
-
-                return jsonify({'reply': final_response_text})
-            else:
-                # Handle non-simple car park queries
-                prompt_message = f"{default_prompt} {message}"
-        else:
-            # Handle non-car_park mode
-            prompt_message = message
-
-        # Generate response for non-car_park mode or complex queries
-        response = client.models.generate_content(
-            model="gemini-2.0-flash", contents=prompt_message
-        )
-        final_response_text = response.text
-
-        # Translate to Traditional Chinese if the user's message is in Chinese
-        if is_chinese(message):
-            translation_prompt = (
-                "請將以下內容翻譯成繁體中文，並確保自然流暢且不讓使用者察覺是翻譯:\n"
-                f"{final_response_text}"
-            )
-            try:
-                translation_response = client.models.generate_content(
-                    model="gemini-2.0-flash", contents=translation_prompt
-                )
-                final_response_text = translation_response.text
-            except Exception as e:
-                logging.error(f"Error translating response: {str(e)}")
-                # Keep original response if translation fails
-
-        return jsonify({'reply': final_response_text})
-
-    except Exception as e:
-        logging.error(f"Error generating content: {str(e)}")
-        return jsonify({'error': 'Failed to generate content'}), 500
 
 @app.route('/zh/news')
 def zh_news():
