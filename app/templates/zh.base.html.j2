@@ -1,4 +1,5 @@
 {% extends 'bootstrap/base.html' %}
+{% block html_attribs %} lang="zh-HK"{% endblock %}
 {% import 'bootstrap/wtf.html' as wtf %}
 {% block title %}
     {% if title %}
@@ -11,6 +12,7 @@
     {{ super() }}
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css') }}?v=5">
     <style>
         /* Light mode: reset dark leftovers (thead-dark, inline styles, inherited colors) */
         body:not(.dark-mode) {
@@ -207,6 +209,9 @@
         document.addEventListener('DOMContentLoaded', function() {
             const body = document.body;
             const darkModeToggle = document.getElementById('dark-mode-toggle');
+            if (!darkModeToggle) {
+                return;
+            }
             const icon = darkModeToggle.querySelector('span');
             
             // 檢查是否已啟用暗黑模式
@@ -241,6 +246,19 @@
                 localStorage.setItem('darkMode', 'enabled');
                 icon.className = 'glyphicon glyphicon-sun night-mode-icon';
             }
+        });
+
+        document.addEventListener('click', function(event) {
+            const link = event.target.closest && event.target.closest('.navbar-collapse a');
+            if (!link || link.classList.contains('dropdown-toggle') || window.innerWidth >= 768) {
+                return;
+            }
+            const openMenus = document.querySelectorAll('.navbar-collapse.in');
+            openMenus.forEach(function(menu) {
+                if (window.jQuery) {
+                    window.jQuery(menu).collapse('hide');
+                }
+            });
         });
     </script>
 {% endblock %}
