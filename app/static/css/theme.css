@@ -655,6 +655,83 @@ html.dark-mode .alert-danger, body.dark-mode .alert-danger { background: #3a1f1f
   border-radius: 10px;
 }
 
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.camera-card {
+  background: var(--ep-surface);
+  border: 1px solid var(--ep-line);
+  border-radius: var(--ep-radius);
+  overflow: hidden;
+  box-shadow: var(--ep-shadow);
+}
+
+.camera-card.is-hidden {
+  display: none !important;
+}
+
+.camera-card.favorite {
+  box-shadow: 0 0 0 2px var(--ep-primary);
+}
+
+.camera-card-image {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: #111;
+  cursor: pointer;
+}
+
+.camera-card-image img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  display: block;
+}
+
+.camera-card-body {
+  padding: 12px;
+}
+
+.camera-card-body h3 {
+  font-size: 14px;
+  margin: 0 0 6px;
+  line-height: 1.35;
+}
+
+.camera-card-body p {
+  font-size: 12px;
+  color: var(--ep-muted);
+  margin: 0 0 10px;
+}
+
+.camera-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.camera-card-actions .btn {
+  flex: 1;
+  min-height: 36px;
+}
+
+#favoritesSection[hidden],
+#cameraHint[hidden],
+#no-camera-results[hidden] {
+  display: none !important;
+}
+
+#previewImage {
+  width: 100%;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
 .search-record {
   display: inline-block;
   margin: 4px 6px 4px 0;
