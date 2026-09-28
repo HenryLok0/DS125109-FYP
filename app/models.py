@@ -172,6 +172,16 @@ class Condition(db.Model):
     def __repr__(self) -> str:
         return f'Condition {self.Condition}>'
     
+class VacancySnapshot(db.Model):
+    """One hour of live vacancy for a car park, kept so later hours can be compared."""
+    __tablename__ = "vacancy_snapshot"
+    id = db.Column(db.Integer, primary_key=True)
+    park_id = db.Column(db.String(32), index=True, nullable=False)
+    recorded_at = db.Column(db.DateTime, index=True, nullable=False)
+    private_car = db.Column(db.Integer)
+    motorcycle = db.Column(db.Integer)
+
+
 class Meetup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(30), nullable=False, unique=True)

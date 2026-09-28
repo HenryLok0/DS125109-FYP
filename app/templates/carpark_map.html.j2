@@ -1,0 +1,93 @@
+{% extends "zh.base.html.j2" if chinese else "base.html.j2" %}
+{% block title %}{% if chinese %}全港停車場地圖{% else %}Hong Kong car park map{% endif %}{% endblock %}
+{% block app_content %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+    .map-page h1 { margin-bottom: 8px; }
+    .map-note { color: var(--ep-muted); margin-bottom: 12px; }
+    #hk-map { height: 70vh; min-height: 420px; border-radius: 14px; border: 1px solid var(--ep-line); }
+    .map-legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 0; font-size: 13px; }
+    .map-legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .legend-many::before { background: #0b6e4f; }
+    .legend-some::before { background: #c47b16; }
+    .legend-few::before { background: #c0392b; }
+</style>
+<div class="map-page">
+    <h1>{% if chinese %}全港停車場地圖{% else %}Hong Kong car park map{% endif %}</h1>
+    <p class="map-note">
+        {% if chinese %}
+        顏色是而家的私家車空位。點一個場可看同一星期、同一小時的過往平均。未有至少 3 次紀錄時不會估算。
+        {% else %}
+        Colour is the live private-car vacancy. Click a site for the average from the same weekday and hour. No estimate is shown until there are at least 3 past records.
+        {% endif %}
+    </p>
+    <div id="hk-map"></div>
+    <div class="map-legend">
+        <span class="legend-many">{% if chinese %}50 個或以上{% else %}50 or more{% endif %}</span>
+        <span class="legend-some">{% if chinese %}10 至 49 個{% else %}10 to 49{% endif %}</span>
+        <span class="legend-few">{% if chinese %}少於 10 個{% else %}Under 10{% endif %}</span>
+    </div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const chinese = {{ 'true' if chinese else 'false' }};
+    const map = L.map('hk-map').setView([22.32, 114.17], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, function (char) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
+        });
+    }
+
+    function vacancyNumber(value) {
+        const number = parseInt(value, 10);
+        return Number.isNaN(number) || number < 0 ? null : number;
+    }
+
+    function markerColor(value) {
+        if (value === null) return '#8b95a1';
+        if (value >= 50) return '#0b6e4f';
+        if (value >= 10) return '#c47b16';
+        return '#c0392b';
+    }
+
+    function typicalLine(label, value, samples) {
+        if (value === null || value === undefined) {
+            return chinese
+                ? label + '：未有足夠過往紀錄（' + samples + '/3）'
+                : label + ': not enough history yet (' + samples + '/3)';
+        }
+        return chinese
+            ? label + '同時段平均：約 ' + value + ' 個'
+            : label + ' typical for this hour: about ' + value;
+    }
+
+    fetch('/api/map-carparks?lang=' + (chinese ? 'zh' : 'en'))
+        .then(function (response) { return response.json(); })
+        .then(function (carparks) {
+            carparks.forEach(function (carpark) {
+                const spaces = vacancyNumber(carpark.private_car);
+                const marker = L.circleMarker([carpark.lat, carpark.lng], {
+                    radius: 7,
+                    color: markerColor(spaces),
+                    fillColor: markerColor(spaces),
+                    fillOpacity: 0.9,
+                    weight: 1
+                }).addTo(map);
+                const nowText = spaces === null
+                    ? (chinese ? '私家車空位未提供' : 'Private-car vacancy not reported')
+                    : (chinese ? '而家私家車空位：' + spaces : 'Private cars now: ' + spaces);
+                marker.bindPopup(
+                    '<strong>' + escapeHtml(carpark.name) + '</strong><br>' +
+                    escapeHtml(carpark.address) + '<br>' +
+                    nowText + '<br>' +
+                    typicalLine(chinese ? '私家車' : 'Private cars', carpark.typical_private_car, carpark.samples)
+                );
+            });
+        });
+</script>
+{% endblock %}
