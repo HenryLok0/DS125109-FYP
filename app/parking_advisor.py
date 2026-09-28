@@ -244,7 +244,7 @@ def answer_parking_question(message, carparks):
 
     lines = []
     if chinese:
-        lines.append("以下是而家的即時空位（政府資料），不是聽日的預測。")
+        lines.append("以下是而家的即時空位")
     else:
         lines.append("These are live vacancies from the government feed, not a forecast for tomorrow.")
 
