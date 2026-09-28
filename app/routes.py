@@ -12,6 +12,7 @@ from app.models import User, Post, Image, Product,Category,Brand,Area,Distric,MT
 from app.email import send_password_reset_email
 from app.govdata import fetch_en_carparks, fetch_zh_carparks, read_excel_rows
 from app.parking_advisor import answer_parking_question
+from app.vacancy_history import record_hourly_snapshot, typical_for_now
 from werkzeug.utils import secure_filename
 import json
 import xml.etree.ElementTree as ET
@@ -248,6 +249,59 @@ def before_request():
 @app.route('/ai-chatbox')
 def ai_chatbox():
     return render_template('ai-chatbox.html.j2')
+
+
+def _map_payload(chinese):
+    carparks = fetch_zh_carparks()
+    park_ids = [str(item.get("park_id") or "") for item in carparks if item.get("park_id")]
+    try:
+        record_hourly_snapshot(carparks)
+        typical = typical_for_now(park_ids)
+    except Exception:
+        app.logger.exception("vacancy history unavailable")
+        typical = {}
+    features = []
+    for carpark in carparks:
+        try:
+            latitude = float(carpark.get("latitude"))
+            longitude = float(carpark.get("longitude"))
+        except (TypeError, ValueError):
+            continue
+        park_id = str(carpark.get("park_id") or "")
+        history = typical.get(park_id, {"samples": 0, "private_car": None, "motorcycle": None})
+        features.append({
+            "id": park_id,
+            "name": (carpark.get("name_tc") if chinese else carpark.get("name_en")) or carpark.get("name_tc") or "",
+            "address": (carpark.get("displayAddress_tc") if chinese else carpark.get("displayAddress_en")) or "",
+            "lat": latitude,
+            "lng": longitude,
+            "status": carpark.get("opening_status") or "",
+            "private_car": carpark.get("privateCar_vacancy"),
+            "motorcycle": carpark.get("motorCycle_vacancy"),
+            "typical_private_car": history["private_car"],
+            "typical_motorcycle": history["motorcycle"],
+            "samples": history["samples"],
+        })
+    return features
+
+
+@app.route('/map')
+def carpark_map():
+    return render_template('carpark_map.html.j2', chinese=False)
+
+
+@app.route('/zh/map')
+def zh_carpark_map():
+    return render_template('carpark_map.html.j2', chinese=True)
+
+
+@app.route('/api/map-carparks')
+def map_carparks():
+    chinese = request.args.get("lang") == "zh"
+    try:
+        return jsonify(_map_payload(chinese))
+    except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+        return jsonify([])
 
 @app.route('/')
 def index():
