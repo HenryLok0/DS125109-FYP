@@ -1,9 +1,6 @@
 {% extends "zh.base.html.j2" %}
 {% import 'bootstrap/wtf.html' as wtf %}
-{% block head %}
-<title>香港島停車場資訊</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-{% endblock %}
+{% block title %}香港島停車場資訊{% endblock %}
 {% block app_content %}
     <div class="container mt-5">
         <h1 class="text-center mb-4">香港島停車場資訊</h1>
@@ -220,6 +217,17 @@
 
     .chatbox-header h5 {
         margin: 0;
+    }
+
+    /* Light mode: keep table headers light */
+    body:not(.dark-mode) .thead-dark th {
+        background-color: #f5f5f5 !important;
+        color: #333333 !important;
+        border-color: #ddd !important;
+    }
+
+    body:not(.dark-mode) .table > tbody > tr > td {
+        color: #333333;
     }
 
     body.dark-mode .table-striped > tbody > tr:nth-of-type(odd) {
