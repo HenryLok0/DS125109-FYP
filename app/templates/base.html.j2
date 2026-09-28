@@ -33,6 +33,11 @@
       border-color: #ccc !important;
     }
 
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+    }
+
     /* Additional night mode styles for specific components */
     body.dark-mode {
       background-color: #121212;
@@ -397,18 +402,16 @@
     {% endif %}
 {% endblock %}
 {% block navbar %}
-    <div class="row">
-        <nav class="navbar navbar-default">
-            <div class="container">
-                <div class="navbar-header">
-                    <!-- Add a brand or toggle button if necessary -->
-                </div>
-                
-                {% include "indexbase.html.j2" %}
-                {% include "search_bar.html.j2" %}
+    <nav class="navbar navbar-default">
+        <div class="container">
+            <div class="navbar-header">
+                <!-- Add a brand or toggle button if necessary -->
             </div>
-        </nav>
-    </div>
+            
+            {% include "indexbase.html.j2" %}
+            {% include "search_bar.html.j2" %}
+        </div>
+    </nav>
     <div class="container">
         {% with messages = get_flashed_messages() %}
             {% if messages %}
