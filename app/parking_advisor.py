@@ -170,6 +170,27 @@ def _region_districts(message):
     return ()
 
 
+def _vacancy_count(carpark, vehicle_key):
+    try:
+        number = int(carpark.get(vehicle_key + "_vacancy"))
+    except (TypeError, ValueError):
+        return None
+    if number < 0:
+        return None
+    return number
+
+
+def _passes_listing(carpark, vehicles):
+    """Open, and every requested vehicle has a reported space above zero."""
+    if str(carpark.get("opening_status") or "").upper() != "OPEN":
+        return False
+    for key, _zh_label, _en_label in vehicles:
+        count = _vacancy_count(carpark, key)
+        if count is None or count <= 0:
+            return False
+    return True
+
+
 def _wants_spaces_now(message):
     lowered = message.lower()
     return any(word in lowered for word in ("有位", "空位", "邊度有", "where", "vacancy", "available"))
@@ -225,13 +246,17 @@ def answer_parking_question(message, carparks):
     for score, spaces, carpark in ranked:
         if score <= 0:
             continue
-        if wants_spaces and spaces <= 0:
+        if wants_spaces and not _passes_listing(carpark, vehicles):
             continue
         matches.append(carpark)
         if len(matches) == 5:
             break
 
     if not matches:
+        if wants_spaces and any(item[0] > 0 for item in ranked):
+            if chinese:
+                return "這個範圍沒有營業中、而且所選車種有位的停車場。"
+            return "Nothing in that area is open with a space for the vehicle you asked about."
         if chinese:
             return (
                 "我未對到這個地方。請講地區或停車場名，例如「中環」、「尖沙咀」或「環球大廈」。\n"

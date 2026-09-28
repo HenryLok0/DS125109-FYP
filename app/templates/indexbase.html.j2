@@ -59,14 +59,6 @@
       <a href="{{ '/zh' + request.path if request.path != '/' else '/zh' }}">繁</a>
     {% endif %}
   </li>
-  {% if current_user.is_anonymous %}
-    <li><a href="{{ url_for('login') }}">Login</a></li>
-    <li><a href="/settings">Settings</a></li>
-  {% else %}
-    <li><a href="{{ url_for('user', username=current_user.username) }}">Profile</a></li>
-    <li><a href="/settings">Settings</a></li>
-    <li><a href="{{ url_for('logout') }}">Logout</a></li>
-  {% endif %}
   <li class="theme-toggle-wrapper">
     <button type="button" id="theme-toggle" class="btn theme-toggle-btn" aria-label="Toggle theme">
       <span class="glyphicon glyphicon-adjust night-mode-icon" aria-hidden="true"></span>
