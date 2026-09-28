@@ -1,9 +1,6 @@
 {% extends "base.html.j2" %}
 {% import 'bootstrap/wtf.html' as wtf %}
-{% block head %}
-<title>Traffic Notices</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
-{% endblock %}
+{% block title %}Traffic Notices{% endblock %}
 {% block app_content %}
     <style>
         body {
@@ -95,7 +92,11 @@
     </style>
 
     <div class="container mt-5">
-        <h1 class="text-center mb-4">Traffic Notices</h1>
+    <div class="page-header-lite">
+        <p class="page-kicker">Transport Department</p>
+        <h1>Traffic Notices</h1>
+        <p class="page-lead">Search current notices and keep recent keywords.</p>
+    </div>
         <div class="form-group">
             <input type="text" id="search-bar" class="form-control" placeholder="Search notices..." onkeyup="filterNotices()">
             <button id="add-search-term" class="btn btn-primary ml-2">+</button>

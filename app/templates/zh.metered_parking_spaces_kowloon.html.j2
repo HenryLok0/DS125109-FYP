@@ -6,8 +6,11 @@
 
 {% block app_content %}
     <div class="container mt-4">
-        <h1 class="mb-4 text-center">九龍區咪錶泊車位</h1>
-        <div class="form-group d-flex justify-content-between">
+        <div class="page-header-lite">
+            <p class="page-kicker">咪錶</p>
+            <h1>九龍區咪錶泊車位</h1>
+        </div>
+        <div class="filter-panel meter-filters">
             <div style="width: 33%;">
                 <label for="timeCategory">收費時間類別</label>
                 <select id="timeCategory" class="form-control" onchange="filterTable()">

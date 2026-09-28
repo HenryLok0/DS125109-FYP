@@ -1,0 +1,26 @@
+<div id="chatbox-button">
+    <button type="button" class="chatbox-btn" onclick="toggleChatbox()" aria-label="Chat with AI">
+        <span class="chatbox-icon">&#128172;</span>
+    </button>
+</div>
+<div id="chatbox-popup" class="chatbox-popup">
+    <div class="chatbox-header">
+        <h5>{% if request.path.startswith('/zh') %}AI 聊天室{% else %}AI Chat{% endif %}</h5>
+        <button type="button" class="btn btn-sm btn-default" onclick="toggleChatbox()">
+            {% if request.path.startswith('/zh') %}關閉{% else %}Close{% endif %}
+        </button>
+    </div>
+    <iframe id="chatbox-frame" data-src="{{ url_for('ai_chatbox') }}" title="AI chat" width="100%" height="100%" frameborder="0"></iframe>
+</div>
+<script>
+    function toggleChatbox() {
+        const popup = document.getElementById("chatbox-popup");
+        const frame = document.getElementById("chatbox-frame");
+        if (!popup) return;
+        const opening = popup.style.display !== "block";
+        popup.style.display = opening ? "block" : "none";
+        if (opening && frame && !frame.getAttribute("src") && frame.dataset.src) {
+            frame.src = frame.dataset.src;
+        }
+    }
+</script>

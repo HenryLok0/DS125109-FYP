@@ -1,8 +1,8 @@
 {% extends "zh.base.html.j2" %}
 {% import 'bootstrap/wtf.html' as wtf %}
-{% block head %}
-<title>交通攝像頭位置</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+{% block title %}交通攝影機{% endblock %}
+{% block styles %}
+{{ super() }}
 <style>
     /* General Night Mode Styles */
     body.dark-mode {
@@ -69,7 +69,11 @@
 </style>
 {% endblock %}
 {% block app_content %}
-    <h1 class="text-center mb-4">交通攝像頭位置</h1>
+    <div class="page-header-lite">
+        <p class="page-kicker">即時影像</p>
+        <h1>交通攝影機位置</h1>
+        <p class="page-lead">選擇地區後可查看快照或地圖。</p>
+    </div>
     <div class="container" >
         <div class="row">
             <div class="col-md-12">
