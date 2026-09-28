@@ -1,8 +1,8 @@
 {% extends "zh.base.html.j2" %}
 {% import 'bootstrap/wtf.html' as wtf %}
-{% block head %}
-<title>交通通告</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+{% block title %}交通通告{% endblock %}
+{% block styles %}
+{{ super() }}
 <style>
     /* General Night Mode Styles */
     body.dark-mode {
@@ -129,7 +129,10 @@
 </head>
 <body>
     <div class="container mt-5">
-        <h1 class="text-center mb-4">交通通告</h1>
+        <div class="page-header-lite">
+            <p class="page-kicker">運輸署</p>
+            <h1>交通通告</h1>
+        </div>
         <div class="form-group">
             <input type="text" id="search-bar" class="form-control" placeholder="搜尋通告..." onkeyup="filterNotices()">
             <button id="add-search-term" class="btn btn-primary ml-2">+</button>

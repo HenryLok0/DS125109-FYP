@@ -1,8 +1,8 @@
 {% extends "base.html.j2" %}
 {% import 'bootstrap/wtf.html' as wtf %}
-{% block head %}
-<title>Traffic Camera Locations</title>
-<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+{% block title %}Traffic Cameras{% endblock %}
+{% block styles %}
+{{ super() }}
 <style>
     /* Dark mode styles specific to camera page */
     body.dark-mode .img-thumbnail {
@@ -145,7 +145,11 @@
 </style>
 {% endblock %}
 {% block app_content %}
-    <h1 class="text-center mb-4">Traffic Camera Locations</h1>
+    <div class="page-header-lite">
+        <p class="page-kicker">Live cameras</p>
+        <h1>Traffic Camera Locations</h1>
+        <p class="page-lead">Pick a district, then open a snapshot or map.</p>
+    </div>
     <div class="container">
         <div class="row">
             <div class="col-md-12">
