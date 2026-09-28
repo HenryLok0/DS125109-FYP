@@ -146,50 +146,10 @@
                 </div>
             </div>
         </div>
-
-
-
-        <!-- Chatbox Popup -->
-        <div id="chatbox-popup" class="chatbox-popup">
-            <div class="chatbox-header">
-                <h5 class="mb-0">AI Chatbox Room</h5>
-                <button class="btn btn-sm btn-danger" onclick="toggleChatbox()">Close</button>
-            </div>
-            <iframe id="chatbox-frame" data-src="{{ url_for('ai_chatbox') }}" width="100%" height="100%" frameborder="0"></iframe>
-        </div>
-    </div>
+</div>
     
     <style>
-        .chatbox-popup {
-            position: fixed;
-            bottom: 70px;
-            right: 20px;
-            width: 300px;
-            height: 400px;
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            display: none;
-            z-index: 1000;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        .chatbox-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            background: #007bff;
-            color: white;
-            border-bottom: 1px solid #ccc;
-            border-top-left-radius: 10px;
-            border-top-right-radius: 10px;
-        }
-        .chatbox-header h5 {
-            margin: 0;
-        }
-        /* Existing styles... */
-    
-        /* Dark mode styles for map modal and chatbox */
+        /* Dark mode styles for map modal */
         body.dark-mode .modal-content {
             background-color: #1e1e1e;
             border-color: #444;
@@ -206,16 +166,6 @@
         body.dark-mode .close {
             color: #e0e0e0;
             text-shadow: 0 1px 0 #000;
-        }
-        
-        body.dark-mode .chatbox-popup {
-            background-color: #1e1e1e;
-            border-color: #444;
-        }
-        
-        body.dark-mode .chatbox-header {
-            background-color: #375a72;
-            border-color: #2e4b60;
         }
         
         /* Add a wrapper for the map iframe in dark mode */
@@ -410,16 +360,6 @@
               });
         }
 
-        function toggleChatbox() {
-            const chatboxPopup = document.getElementById('chatbox-popup');
-            const frame = document.getElementById('chatbox-frame');
-            const opening = chatboxPopup.style.display !== 'block';
-            if (opening && frame && !frame.getAttribute('src')) {
-                frame.setAttribute('src', frame.getAttribute('data-src'));
-            }
-            chatboxPopup.style.display = opening ? 'block' : 'none';
-        }
-
         window.onload = function() {
             filterCarParks(); // Initial filter
             sortTable(3); // Default sort by vacancy
@@ -445,8 +385,6 @@
             document.getElementById('no-results').style.display = visible ? 'none' : 'block';
         }
         
-        // Add this after your existing toggleChatbox function
-    
         // Apply dark mode to dynamic elements
         function applyDarkModeToElements() {
             const isDarkMode = document.body.classList.contains('dark-mode');
@@ -454,7 +392,6 @@
             // Apply dark mode to specific elements
             const modalContent = document.querySelector('.modal-content');
             const modalBody = document.querySelector('.modal-body');
-            const chatboxPopup = document.getElementById('chatbox-popup');
             
             if (modalContent) {
                 modalContent.style.backgroundColor = isDarkMode ? '#1e1e1e' : '';
@@ -463,11 +400,6 @@
             
             if (modalBody) {
                 modalBody.style.color = isDarkMode ? '#e0e0e0' : '';
-            }
-            
-            if (chatboxPopup) {
-                chatboxPopup.style.backgroundColor = isDarkMode ? '#1e1e1e' : '';
-                chatboxPopup.style.borderColor = isDarkMode ? '#444' : '';
             }
             
             // Apply dark mode to text elements in modal
@@ -485,13 +417,6 @@
             $('#map-modal').on('shown.bs.modal', function() {
                 applyDarkModeToElements();
             });
-            
-            // Also update when chatbox is toggled
-            const originalToggleChatbox = toggleChatbox;
-            toggleChatbox = function() {
-                originalToggleChatbox();
-                setTimeout(applyDarkModeToElements, 100); // Small delay to ensure DOM is updated
-            };
         });
         
         // Enhance the window.onload function to include our dark mode updates
@@ -615,194 +540,4 @@
             }
         };
     </script>
-            <!-- Chatbox Button -->
-        <div id="chatbox-button" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
-            <button class="chatbox-btn" onclick="toggleChatbox()" aria-label="Chat with AI">
-                <span class="chatbox-icon">&#128172;</span> <!-- Speech bubble emoji as an icon -->
-            </button>
-        </div>
-        
-        <!-- Chatbox Popup -->
-        <div id="chatbox-popup" class="chatbox-popup">
-            <div class="chatbox-header">
-                <h5 class="mb-0">AI Chatbox Room</h5>
-                <button class="btn btn-sm btn-danger" onclick="toggleChatbox()">Close</button>
-            </div>
-            <iframe id="chatbox-frame" data-src="{{ url_for('ai_chatbox') }}" width="100%" height="100%" frameborder="0"></iframe>
-        </div>
-        
-        <style>
-            /* Floating Action Button (FAB) Style for Chatbox Button */
-            .chatbox-btn {
-                background-color: #007bff;
-                color: white;
-                border: none;
-                border-radius: 50%;
-                width: 50px;
-                height: 50px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-                cursor: pointer;
-                transition: background-color 0.3s ease, transform 0.2s ease;
-            }
-        
-            .chatbox-btn:hover {
-                background-color: #0056b3;
-                transform: scale(1.1);
-            }
-        
-            .chatbox-btn:focus {
-                outline: none;
-                box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.5);
-            }
-        
-            .chatbox-icon {
-                font-size: 1.5rem;
-                line-height: 1;
-            }
-        
-            /* Chatbox Popup */
-            .chatbox-popup {
-                position: fixed;
-                bottom: 90px;
-                right: 20px;
-                width: 300px;
-                height: 800px;
-                background: white;
-                border: 1px solid #ccc;
-                border-radius: 10px;
-                display: none;
-                z-index: 1000;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-                overflow: hidden;
-            }
-        
-            .chatbox-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 10px;
-                background: #007bff;
-                color: white;
-                border-bottom: 1px solid #ccc;
-                border-top-left-radius: 10px;
-                border-top-right-radius: 10px;
-            }
-        
-            .chatbox-header h5 {
-                margin: 0;
-            }
-            /* Existing styles... */
-    
-            /* Dark mode styles for map modal and chatbox */
-            body.dark-mode .modal-content {
-                background-color: #1e1e1e;
-                border-color: #444;
-            }
-            
-            body.dark-mode .modal-header {
-                border-bottom-color: #444;
-            }
-            
-            body.dark-mode .modal-body {
-                color: #e0e0e0;
-            }
-            
-            body.dark-mode .close {
-                color: #e0e0e0;
-                text-shadow: 0 1px 0 #000;
-            }
-            
-            body.dark-mode .chatbox-popup {
-                background-color: #1e1e1e;
-                border-color: #444;
-            }
-            
-            body.dark-mode .chatbox-header {
-                background-color: #375a72;
-                border-color: #2e4b60;
-            }
-            
-            /* Add a wrapper for the map iframe in dark mode */
-            body.dark-mode .map-wrapper {
-                position: relative;
-            }
-            
-            /* Optional: Add a dark overlay for map iframe until clicked */
-            body.dark-mode .map-wrapper::after {
-                content: "";
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 0, 0, 0.1);
-                pointer-events: none;
-            }
-            /* Enhance the existing dark mode table styles */
-            body.dark-mode .table.table-striped {
-                color: #e0e0e0;
-                background-color: #1e1e1e;
-                border-color: #444;
-            }
-            
-            body.dark-mode .table.table-striped tbody tr {
-                background-color: #1e1e1e;
-            }
-            
-            body.dark-mode .table.table-striped > tbody > tr:nth-of-type(odd) {
-                background-color: #2a2a2a;
-            }
-            
-            body.dark-mode .table.table-hover > tbody > tr:hover {
-                background-color: #375a72 !important;
-                color: #fff;
-            }
-            
-            body.dark-mode .thead-dark th {
-                background-color: #375a72 !important;
-                color: white !important;
-                border-color: #2e4b60 !important;
-            }
-            
-            body.dark-mode .table.table-striped td,
-            body.dark-mode .table.table-striped th {
-                border-color: #444;
-            }
-            
-            /* Ensure buttons in table maintain dark mode styling */
-            body.dark-mode .table .btn-info {
-                background-color: #2d6987;
-                border-color: #265a74;
-            }
-            
-            body.dark-mode .table .btn-primary {
-                background-color: #375a72;
-                border-color: #2e4b60;
-            }
-            
-            body.dark-mode .table .btn-warning {
-                background-color: #8a6d3b;
-                border-color: #785f33;
-            }
-            
-            /* Fix for sort icons in dark mode */
-            body.dark-mode .sort-icon {
-                color: #ffffff;
-            }
-        </style>
-        
-        <script>
-            function toggleChatbox() {
-                const chatboxPopup = document.getElementById('chatbox-popup');
-                const frame = document.getElementById('chatbox-frame');
-                const opening = chatboxPopup.style.display !== 'block';
-                if (opening && frame && !frame.getAttribute('src')) {
-                    frame.setAttribute('src', frame.getAttribute('data-src'));
-                }
-                chatboxPopup.style.display = opening ? 'block' : 'none';
-            }
-        </script>
 {% endblock %}
