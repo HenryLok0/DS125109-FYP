@@ -1,9 +1,11 @@
 {% extends 'bootstrap/base.html' %}
+{% block html_attribs %} lang="en"{% endblock %}
 
 {% block styles %}
     {{ super() }}
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile.css') }}?v=5">
     <style>
     .navbar-favicon {
       display: inline-block;
@@ -472,6 +474,19 @@
             if (localStorage.getItem('darkMode') === 'enabled') {
                 document.body.classList.add('dark-mode');
             }
+        });
+
+        document.addEventListener('click', function(event) {
+            const link = event.target.closest && event.target.closest('.navbar-collapse a');
+            if (!link || link.classList.contains('dropdown-toggle') || window.innerWidth >= 768) {
+                return;
+            }
+            const openMenus = document.querySelectorAll('.navbar-collapse.in');
+            openMenus.forEach(function(menu) {
+                if (window.jQuery) {
+                    window.jQuery(menu).collapse('hide');
+                }
+            });
         });
     </script>
 {% endblock %}
