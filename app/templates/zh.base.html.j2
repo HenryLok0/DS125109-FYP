@@ -9,7 +9,8 @@
 {% endblock %}
 {% block styles %}
     {{ super() }}
-    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.svg') }}">
     <style>
         /* Light mode: reset dark leftovers (thead-dark, inline styles, inherited colors) */
         body:not(.dark-mode) {
@@ -164,6 +165,16 @@
         .table-responsive {
             width: 100%;
             overflow-x: auto;
+        }
+
+        .navbar-favicon {
+            display: inline-block;
+            vertical-align: middle;
+            margin: 0 8px 0 0;
+        }
+        .navbar-brand {
+            display: flex;
+            align-items: center;
         }
     </style>
 {% endblock %}

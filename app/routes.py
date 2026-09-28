@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import render_template, jsonify, flash, redirect, url_for, request, g, session
+from flask import render_template, jsonify, flash, redirect, url_for, request, g, session, send_from_directory
 import requests
 from flask_login import login_user, logout_user, current_user, login_required
 from urllib.parse import urlparse
@@ -17,8 +17,16 @@ import logging
 from google import genai
 
 import pandas as pd
-from flask import render_template
- 
+import os
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(
+        os.path.join(app.root_path, 'static'),
+        'favicon.svg',
+        mimetype='image/svg+xml'
+    )
+
 @app.route('/zh/metered_parking_spaces_new_territories')
 def metered_parking_spaces_new_territories_chi():
     url = "https://www.td.gov.hk/filemanager/tc/content_5036/opendata/nt_parking_spaces_chi.xlsx"
