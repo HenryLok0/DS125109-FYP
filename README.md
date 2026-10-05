@@ -16,13 +16,14 @@ Chinese home: `http://localhost:5000/zh`
 - Favourites (stored in the browser session)
 - English / Traditional Chinese
 - Light and dark theme
-- Gemini AI chatbox (needs `GEMINI_API_KEY`)
+- One-stop map (car parks, meter locations, cameras) and a parking assistant
+- GitHub Pages hosting from the `docs/` folder. No API key and no database are required
 
 ## Requirements
 
 - **Python 3.9**. The packages in `requirements.txt` do not install on Python 3.14.
 - On Windows, if `python` is 3.14, create the virtual environment with `py -3.9`.
-- A [Google AI Studio](https://aistudio.google.com/apikey) API key. The app reads `GEMINI_API_KEY` at startup and will not boot without it.
+- `GEMINI_API_KEY` is optional. The site answers from government vacancy data and starts without it.
 
 ## Project structure
 
@@ -68,7 +69,7 @@ Chinese home: `http://localhost:5000/zh`
     | --- | --- |
     | `SECRET_KEY` | Random string used to sign sessions |
     | `SQLALCHEMY_DATABASE_URI` | SQLite by default, or your own database URL |
-    | `GEMINI_API_KEY` | Google Gemini API key. Required to start the server |
+    | `GEMINI_API_KEY` | Optional. Leave the placeholder if you are not calling Gemini |
     | `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` | SMTP for password-reset email. MailHog defaults are in `.env.example` |
 
 5. Start the server from the activated virtual environment:
@@ -87,12 +88,6 @@ Chinese home: `http://localhost:5000/zh`
     python -m flask run --host=0.0.0.0
     ```
 
-6. Optional: load sample account data:
-
-    ```powershell
-    python test_data.py
-    ```
-
 ## Usage
 
 - Open [http://localhost:5000](http://localhost:5000) (English) or [http://localhost:5000/zh](http://localhost:5000/zh) (繁體中文).
@@ -101,6 +96,16 @@ Chinese home: `http://localhost:5000/zh`
 - Toggle light / dark theme from the icon on the right of the navigation bar.
 
 Government vacancy data is cached for about 60 seconds so repeat page loads do not wait on the public APIs every time.
+
+## GitHub Pages
+
+GitHub Pages cannot run the Flask app. The public site is the static page in `docs/`. It reads Hong Kong open data in the browser, so it does not need a database or an API key.
+
+After this folder is on `main`, open the repository on GitHub → Settings → Pages → Build and deployment → Source: GitHub Actions. The workflow `.github/workflows/pages.yml` publishes `docs/`. The site address looks like `https://henrylok0.github.io/DS125109-FYP/`.
+
+`.github/workflows/vacancy-hour.yml` saves one vacancy snapshot every hour, including when nobody has the page open. The map shows a same-hour average only after three earlier snapshots exist.
+
+The Flask app on your computer uses the same map at `/map` and `/zh/map`.
 
 ## License
 
