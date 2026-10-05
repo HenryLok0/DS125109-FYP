@@ -641,9 +641,9 @@ html.dark-mode .alert-danger, body.dark-mode .alert-danger { background: #3a1f1f
 
 .detail-hero img,
 .carpark-photo {
-  width: 280px;
+  width: min(100%, 420px);
+  height: 240px;
   max-width: 100%;
-  height: auto;
   border-radius: 12px;
   object-fit: cover;
   background: var(--ep-bg);
@@ -693,7 +693,72 @@ html.dark-mode .alert-danger, body.dark-mode .alert-danger { background: #3a1f1f
 }
 
 .vacancy-card .vacancy-meta {
+  display: block;
   font-size: 12px;
+  color: var(--ep-muted);
+}
+
+.detail-block {
+  background: var(--ep-surface);
+  border: 1px solid var(--ep-line);
+  border-radius: var(--ep-radius);
+  box-shadow: var(--ep-shadow);
+  padding: 18px 20px;
+  margin: 0 0 16px;
+}
+
+.detail-block h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.detail-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px 18px;
+  margin: 0;
+}
+
+.detail-facts-grid dt {
+  margin: 0 0 4px;
+  color: var(--ep-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-facts-grid dd {
+  margin: 0;
+  color: var(--ep-text);
+}
+
+.detail-charge-list,
+.detail-offer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.detail-charge-list li,
+.detail-offer-list li {
+  padding: 10px 0;
+  border-top: 1px solid var(--ep-line);
+}
+
+.detail-charge-list li:first-child,
+.detail-offer-list li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.detail-charge-list strong {
+  display: block;
+  color: var(--ep-text);
+}
+
+.detail-charge-list span,
+.detail-offer-list li {
   color: var(--ep-muted);
 }
 

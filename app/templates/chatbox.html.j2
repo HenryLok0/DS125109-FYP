@@ -15,6 +15,20 @@
 <script>
     var CHAT_OPEN_KEY = "easepark-chat-open";
 
+    function chatFrameSrc(base) {
+        var path = window.location.pathname || "";
+        var params = [];
+        if (path.indexOf("/zh") === 0) {
+            params.push("lang=zh");
+        }
+        var match = path.match(/\/carpark\/([^/?#]+)/);
+        if (match) {
+            params.push("park=" + encodeURIComponent(match[1]));
+        }
+        var root = String(base || "").split("?")[0];
+        return params.length ? root + "?" + params.join("&") : root;
+    }
+
     function setChatboxOpen(isOpen) {
         const popup = document.getElementById("chatbox-popup");
         const frame = document.getElementById("chatbox-frame");
@@ -23,8 +37,11 @@
         try {
             sessionStorage.setItem(CHAT_OPEN_KEY, isOpen ? "1" : "0");
         } catch (error) {}
-        if (isOpen && frame && !frame.getAttribute("src") && frame.dataset.src) {
-            frame.src = frame.dataset.src;
+        if (isOpen && frame && frame.dataset.src) {
+            var nextSrc = chatFrameSrc(frame.dataset.src);
+            if (frame.getAttribute("src") !== nextSrc) {
+                frame.src = nextSrc;
+            }
         }
     }
 

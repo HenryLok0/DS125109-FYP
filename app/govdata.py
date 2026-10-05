@@ -24,6 +24,7 @@ URL_VACANCY = (
     "https://api.data.gov.hk/v1/carpark-info-vacancy"
     "?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US"
 )
+URL_TD_BASIC = "https://resource.data.one.gov.hk/td/carpark/basic_info_all.json"
 OSM_ENDPOINTS = (
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
@@ -214,10 +215,38 @@ def _apply_vacancy(carpark, vacancy_info):
         carpark["{}_vacancy".format(vehicle_type)] = str(vacancy)
         carpark["{}_vacancy_type".format(vehicle_type)] = slot.get("vacancy_type") or ""
         carpark["{}_lastupdate".format(vehicle_type)] = slot.get("lastupdate") or "—"
+        carpark["{}_vacancyEV".format(vehicle_type)] = slot.get("vacancyEV")
+        carpark["{}_vacancyDIS".format(vehicle_type)] = slot.get("vacancyDIS")
     return carpark
 
 
-def _enrich_live_park(en_row, zh_row, vacancy_info):
+def _photo_url(row, td_photos):
+    # One-stop malls use banner/thumbnail/square. TD parks publish carpark_photo.
+    rendition = row.get("renditionUrls") if isinstance(row.get("renditionUrls"), dict) else {}
+    for key in ("banner", "thumbnail", "square", "carpark_photo"):
+        url = str(rendition.get(key) or "").strip()
+        if url:
+            return url
+    return td_photos.get(str(row.get("park_Id") or ""), "")
+
+
+def _td_photo_map():
+    try:
+        payload = get_json(URL_TD_BASIC, utf8_sig=True)
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return {}
+    photos = {}
+    for item in payload.get("car_park") or []:
+        url = str(item.get("carpark_photo") or "").strip()
+        park_id = str(item.get("park_id") or "")
+        if park_id and url:
+            photos[park_id] = url
+    return photos
+
+
+def _enrich_live_park(en_row, zh_row, vacancy_info, td_photos=None):
+    if td_photos is None:
+        td_photos = _td_photo_map()
     park_id = str(en_row.get("park_Id") or zh_row.get("park_Id") or "")
     district_en = _normalize_district(en_row.get("district") or zh_row.get("district") or "")
     carpark = dict(en_row)
@@ -233,6 +262,7 @@ def _enrich_live_park(en_row, zh_row, vacancy_info):
     carpark["website"] = en_row.get("website") or zh_row.get("website") or ""
     carpark["website_en"] = carpark["website"]
     carpark["website_tc"] = zh_row.get("website") or carpark["website"]
+    carpark["photo"] = _photo_url(en_row, td_photos)
     carpark["opening_status"] = _status_upper(en_row.get("opening_status") or zh_row.get("opening_status"))
     carpark["has_live_vacancy"] = True
     carpark["source"] = "live"
@@ -376,6 +406,7 @@ def _download_osm_carparks():
             "website_en": tags.get("website") or "",
             "website_tc": tags.get("website") or "",
             "contactNo": tags.get("phone") or "",
+            "photo": tags.get("image") or "",
             "opening_status": "OPEN",
             "has_live_vacancy": False,
             "source": "osm",
@@ -502,6 +533,7 @@ def fetch_live_carparks():
         URL_ZH_INFO,
         URL_VACANCY,
     )
+    td_photos = _td_photo_map()
     vacancy_info = _vacancy_by_park(vacancy_payload)
     zh_map = {
         str(item.get("park_Id")): item
@@ -510,7 +542,12 @@ def fetch_live_carparks():
     carparks = []
     for en_row in en_payload.get("results") or []:
         park_id = str(en_row.get("park_Id") or "")
-        carparks.append(_enrich_live_park(en_row, zh_map.get(park_id) or {}, vacancy_info))
+        carparks.append(_enrich_live_park(
+            en_row,
+            zh_map.get(park_id) or {},
+            vacancy_info,
+            td_photos,
+        ))
     return _cache_set("live_carparks", carparks)
 
 
@@ -580,9 +617,285 @@ def vacancy_cards(carpark, lang="en"):
         vacancy = carpark.get("{}_vacancy".format(vehicle_type))
         if vacancy in HIDDEN_VACANCY or vacancy is None:
             continue
+        extras = []
+        ev_count = slot_extra(carpark, vehicle_type, "vacancyEV")
+        accessible_count = slot_extra(carpark, vehicle_type, "vacancyDIS")
+        if lang == "zh":
+            if ev_count is not None:
+                extras.append("電動車充電位 {}".format(ev_count))
+            if accessible_count is not None:
+                extras.append("傷殘人士車位 {}".format(accessible_count))
+        else:
+            if ev_count is not None:
+                extras.append("EV charger spaces {}".format(ev_count))
+            if accessible_count is not None:
+                extras.append("Accessible spaces {}".format(accessible_count))
         cards.append({
             "type": names[vehicle_type],
             "vacancy": vacancy,
             "last_update": carpark.get("{}_lastupdate".format(vehicle_type)) or "—",
+            "extras": extras,
         })
     return cards
+
+
+_WEEKDAY_ORDER = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "PH")
+_WEEKDAY_LABELS = {
+    "en": {
+        "MON": "Mon", "TUE": "Tue", "WED": "Wed", "THU": "Thu",
+        "FRI": "Fri", "SAT": "Sat", "SUN": "Sun", "PH": "public holidays",
+    },
+    "zh": {
+        "MON": "一", "TUE": "二", "WED": "三", "THU": "四",
+        "FRI": "五", "SAT": "六", "SUN": "日", "PH": "公眾假期",
+    },
+}
+_FACILITY_LABELS = {
+    "en": {
+        "evCharger": "EV charger",
+        "disabilities": "Accessible parking",
+        "unloading": "Loading bay",
+        "washing": "Car wash",
+    },
+    "zh": {
+        "evCharger": "電動車充電",
+        "disabilities": "傷殘人士車位",
+        "unloading": "上落貨車位",
+        "washing": "洗車",
+    },
+}
+_PAYMENT_LABELS = {
+    "en": {
+        "cash": "Cash",
+        "octopus": "Octopus",
+        "visa": "Visa",
+        "mastercard": "Mastercard",
+        "eps": "EPS",
+        "unionpay": "UnionPay",
+        "alipay": "Alipay",
+        "wechatpay": "WeChat Pay",
+        "creditcard": "Credit card",
+    },
+    "zh": {
+        "cash": "現金",
+        "octopus": "八達通",
+        "visa": "Visa",
+        "mastercard": "Mastercard",
+        "eps": "易辦事",
+        "unionpay": "銀聯",
+        "alipay": "支付寶",
+        "wechatpay": "微信支付",
+        "creditcard": "信用卡",
+    },
+}
+_TYPE_LABELS = {
+    "en": {
+        "multi-storey": "Multi-storey",
+        "underground": "Underground",
+        "open-air": "Open-air",
+        "single-storey": "Single storey",
+    },
+    "zh": {
+        "multi-storey": "多層",
+        "underground": "地庫",
+        "open-air": "露天",
+        "single-storey": "單層",
+    },
+}
+_COVERED_LABELS = {
+    "en": {"covered": "Covered", "uncovered": "Open-air", "mixed": "Covered and open-air"},
+    "zh": {"covered": "有蓋", "uncovered": "露天", "mixed": "有蓋及露天"},
+}
+
+
+def slot_extra(carpark, vehicle_type, field):
+    """Read an extra vacancy count stored on the vehicle slot, if the feed has one."""
+    raw = carpark.get(vehicle_type)
+    slot = {}
+    if isinstance(raw, list) and raw:
+        slot = raw[0] or {}
+    elif isinstance(raw, dict):
+        slot = raw
+    value = slot.get(field)
+    if value is None:
+        value = carpark.get("{}_{}".format(vehicle_type, field))
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    if number < 0:
+        return None
+    return number
+
+
+def _lookup_label(table, lang, key):
+    text = str(key or "").strip()
+    if not text:
+        return ""
+    return table.get(lang, {}).get(text) or table.get(lang, {}).get(text.lower()) or text
+
+
+def _weekday_text(weekdays, lang):
+    days = [day for day in _WEEKDAY_ORDER if day in (weekdays or [])]
+    if not days:
+        return ""
+    everyday = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"}
+    if everyday.issubset(set(days)):
+        text = "Every day" if lang == "en" else "每日"
+        if "PH" in days:
+            text += " and public holidays" if lang == "en" else "及公眾假期"
+        return text
+    labels = [_WEEKDAY_LABELS[lang].get(day, day) for day in days]
+    if lang == "zh":
+        named = [label for label in labels if label != "公眾假期"]
+        text = "星期" + "、".join(named) if named else ""
+        if "公眾假期" in labels:
+            text = (text + "、公眾假期") if text else "公眾假期"
+        return text
+    return ", ".join(labels)
+
+
+def _period_text(item, lang):
+    start = item.get("periodStart") or ""
+    end = item.get("periodEnd") or ""
+    days = _weekday_text(item.get("weekdays"), lang)
+    if start and end:
+        hours = "{}–{}".format(start, end)
+    else:
+        hours = start or end
+    pieces = [piece for piece in (days, hours) if piece]
+    if item.get("excludePublicHoliday"):
+        pieces.append("except public holidays" if lang == "en" else "公眾假期除外")
+    return ", ".join(pieces)
+
+
+def _height_text(carpark):
+    lines = []
+    for limit in carpark.get("heightLimits") or []:
+        if not isinstance(limit, dict):
+            continue
+        height = limit.get("height")
+        remark = " ".join(str(limit.get("remark") or "").split())
+        text = "{} m".format(height) if height not in (None, "") else ""
+        if remark and remark.lower() not in text.lower():
+            text = "{} ({})".format(text, remark) if text else remark
+        if text and text not in lines:
+            lines.append(text)
+    return " · ".join(lines)
+
+
+def _charge_rows(records, lang, unit_en, unit_zh):
+    rows = []
+    for record in records or []:
+        if not isinstance(record, dict):
+            continue
+        price = record.get("price")
+        if price in (None, "", "N/A"):
+            continue
+        meta_parts = [
+            _period_text(record, lang),
+            _lookup_label(_COVERED_LABELS, lang, record.get("covered")),
+        ]
+        reserved = record.get("reserved")
+        if reserved == "reserved":
+            meta_parts.append("Reserved" if lang == "en" else "預留")
+        elif reserved == "non-reserved":
+            meta_parts.append("Non-reserved" if lang == "en" else "不預留")
+        remark = " ".join(str(record.get("remark") or "").split())
+        if remark:
+            meta_parts.append(remark)
+        unit = unit_en if lang == "en" else unit_zh
+        rows.append({
+            "value": "HK${} {}".format(price, unit).strip(),
+            "meta": " · ".join(part for part in meta_parts if part),
+        })
+    return rows
+
+
+def carpark_profile(carpark, lang="en"):
+    """Readable facts, charges, and offers for the detail page."""
+    zh = lang == "zh"
+    facts = []
+
+    district = carpark.get("district_tc") if zh else carpark.get("district")
+    if district:
+        facts.append({"label": "地區" if zh else "District", "value": district})
+
+    park_type = _lookup_label(_TYPE_LABELS, lang, carpark.get("carpark_Type"))
+    if park_type:
+        facts.append({"label": "類型" if zh else "Type", "value": park_type})
+
+    height = _height_text(carpark)
+    if height:
+        facts.append({"label": "高度限制" if zh else "Height limit", "value": height})
+
+    hour_lines = []
+    for item in carpark.get("openingHours") or []:
+        if isinstance(item, dict):
+            line = _period_text(item, lang)
+            if line:
+                hour_lines.append(line)
+    if hour_lines:
+        facts.append({
+            "label": "開放時間" if zh else "Opening hours",
+            "value": " · ".join(hour_lines),
+        })
+
+    payments = [
+        _lookup_label(_PAYMENT_LABELS, lang, method)
+        for method in (carpark.get("paymentMethods") or [])
+    ]
+    payments = [method for method in payments if method]
+    if payments:
+        facts.append({
+            "label": "付款方式" if zh else "Payment",
+            "value": "、".join(payments) if zh else ", ".join(payments),
+        })
+
+    facilities = [
+        _lookup_label(_FACILITY_LABELS, lang, facility)
+        for facility in (carpark.get("facilities") or [])
+    ]
+    facilities = [facility for facility in facilities if facility]
+    if facilities:
+        facts.append({
+            "label": "設施" if zh else "Facilities",
+            "value": "、".join(facilities) if zh else ", ".join(facilities),
+        })
+
+    space_fields = (
+        ("space", "私家車車位" if zh else "Private car spaces", "privateCar"),
+        ("spaceEV", "電動車充電車位" if zh else "EV charger spaces", "privateCar"),
+        ("spaceDIS", "傷殘人士車位" if zh else "Accessible spaces", "privateCar"),
+        ("spaceUNL", "上落貨車位" if zh else "Loading spaces", "privateCar"),
+    )
+    private_car = carpark.get("privateCar") if isinstance(carpark.get("privateCar"), dict) else {}
+    for field, label, _vehicle in space_fields:
+        value = private_car.get(field)
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            facts.append({"label": label, "value": str(number)})
+
+    charges = []
+    charges.extend(_charge_rows(
+        private_car.get("hourlyCharges"), lang, "/ hour", "/ 小時",
+    ))
+    for row in _charge_rows(private_car.get("monthlyCharges"), lang, "/ month", "/ 月"):
+        row["value"] = ("月租 " if zh else "Monthly ") + row["value"]
+        charges.append(row)
+
+    offers = []
+    for privilege in private_car.get("privileges") or []:
+        if not isinstance(privilege, dict):
+            continue
+        description = " ".join(str(privilege.get("description") or "").split())
+        when = _period_text(privilege, lang)
+        if description and when:
+            offers.append("{} ({})".format(description, when))
+        elif description:
+            offers.append(description)
+
+    return {"facts": facts, "charges": charges, "offers": offers}

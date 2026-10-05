@@ -1,20 +1,19 @@
 from flask import render_template, jsonify, flash, redirect, url_for, request, g, session, send_from_directory
 import requests
 from flask_babel import _, get_locale
-<<<<<<< HEAD
 from app import app, db, client
-from app.forms import zhLoginForm, LoginForm, RegistrationForm, zhRegistrationForm, EditProfileForm, zhEditProfileForm, PostForm, AddAreaForm, AddDistricForm,AddMTRForm, \
-    ResetPasswordRequestForm, zhResetPasswordRequestForm, ResetPasswordForm, zhResetPasswordForm, ImageForm, AddProductForm,AddCategoryForm,AddBrandForm,AddMeetupForm,AddConditionForm
-from app.models import User, Post, Image, Product,Category,Brand,Area,Distric,MTR,Meetup,Condition
-from app.email import send_password_reset_email
-from app.govdata import fetch_en_carparks, fetch_zh_carparks, read_excel_rows, get_carpark_by_id, search_carparks, vacancy_cards, get_coverage_stats
-from werkzeug.utils import secure_filename
-=======
-from app import app
-from app.govdata import fetch_en_carparks, fetch_zh_carparks, read_excel_rows
-from app.parking_advisor import answer_parking_question
+from app.govdata import (
+    fetch_en_carparks,
+    fetch_zh_carparks,
+    read_excel_rows,
+    get_carpark_by_id,
+    search_carparks,
+    vacancy_cards,
+    carpark_profile,
+    get_coverage_stats,
+)
+from app.parking_advisor import advise
 from app.vacancy_history import record_hourly_snapshot, typical_for_now, load_history, start_hourly_recorder
->>>>>>> 0cd7ec462fba81cbe1b4e062d69fd3ec2fec8fc1
 import json
 import xml.etree.ElementTree as ET
 import logging
@@ -97,6 +96,20 @@ def mmetered_parking_spaces_hong_kong_island():
 def privacy_policy():
     return render_template('privacy_policy.html.j2')
 
+def _typical_for(carparks):
+    park_ids = []
+    for item in carparks:
+        park_id = str(item.get("park_id") or item.get("park_Id") or "")
+        if park_id:
+            park_ids.append(park_id)
+    try:
+        record_hourly_snapshot(carparks)
+        return typical_for_now(park_ids)
+    except Exception:
+        app.logger.exception("vacancy history unavailable for advisor")
+        return {}
+
+
 @app.route('/send_message', methods=['POST'])
 def send_message():
     payload = request.get_json(silent=True) or {}
@@ -112,8 +125,15 @@ def send_message():
         except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
             carparks = []
 
-    reply = answer_parking_question(message, carparks)
-    return jsonify({'reply': reply})
+    reply, source = advise(
+        message,
+        carparks,
+        gemini_client=client,
+        model=app.config.get("GEMINI_MODEL") or "gemini-2.5-flash",
+        typical=_typical_for(carparks),
+        focus_id=(payload.get("park_id") or "").strip(),
+    )
+    return jsonify({"reply": reply, "source": source})
 
 
 @app.route('/zh/news')
@@ -254,7 +274,13 @@ def before_request():
 
 @app.route('/ai-chatbox')
 def ai_chatbox():
-    return render_template('ai-chatbox.html.j2')
+    lang = "zh" if request.args.get("lang") == "zh" else "en"
+    return render_template(
+        "ai-chatbox.html.j2",
+        chinese=lang == "zh",
+        gemini_ready=client is not None,
+        park_id=request.args.get("park") or "",
+    )
 
 
 def _map_payload(chinese):
@@ -438,6 +464,7 @@ def carpark_detail(park_id):
     if not carpark:
         return "Carpark not found", 404
     carpark['vacancy_data'] = vacancy_cards(carpark, 'en')
+    carpark['profile'] = carpark_profile(carpark, 'en')
     return render_template('carpark_detail.html.j2', carpark=carpark)
 
 @app.route('/zh/carpark/<park_id>')
@@ -446,6 +473,7 @@ def zh_carpark_detail(park_id):
     if not carpark:
         return "Carpark not found", 404
     carpark['vacancy_data'] = vacancy_cards(carpark, 'zh')
+    carpark['profile'] = carpark_profile(carpark, 'zh')
     return render_template('zh.carpark_detail.html.j2', carpark=carpark)
 
 if __name__ == '__main__':

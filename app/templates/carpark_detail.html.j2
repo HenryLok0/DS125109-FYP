@@ -9,8 +9,8 @@
     </div>
 
     <div class="detail-hero">
-        {% if carpark.renditionUrls and carpark.renditionUrls.carpark_photo %}
-            <img src="{{ carpark.renditionUrls.carpark_photo }}" alt="{{ carpark.name }}" class="carpark-photo">
+        {% if carpark.photo %}
+            <img src="{{ carpark.photo }}" alt="{{ carpark.name }}" class="carpark-photo" onerror="this.style.display='none'">
         {% endif %}
         <div class="detail-facts">
             <p><strong>Address</strong> {{ carpark.displayAddress }}</p>
@@ -32,12 +32,18 @@
         </div>
     </div>
 
+    {% set detail_lang = 'en' %}
+    {% include "_carpark_profile.html.j2" %}
+
     <h2>Vacancy</h2>
     <div class="vacancy-grid">
         {% for item in carpark.vacancy_data %}
             <div class="vacancy-card">
                 <span class="vacancy-label">{{ item.type }}</span>
                 <span class="vacancy-value">{{ item.vacancy }}</span>
+                {% for extra in item.extras %}
+                    <span class="vacancy-meta">{{ extra }}</span>
+                {% endfor %}
                 <span class="vacancy-meta">Updated {{ item.last_update }}</span>
             </div>
         {% else %}

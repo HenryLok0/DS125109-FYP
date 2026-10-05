@@ -3,6 +3,10 @@ from logging.handlers import RotatingFileHandler, SMTPHandler
 import os
 from flask import Flask, request
 from app.config import Config
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_login import LoginManager
+from flask_mail import Mail
 from flask_bootstrap import Bootstrap
 from flask_moment import Moment
 from flask_babel import Babel
@@ -11,26 +15,12 @@ from flask_msearch import Search
 app = Flask(__name__, static_folder='static')
 app.config.from_object(Config)
 
-<<<<<<< HEAD
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 login = LoginManager()
 login.login_view = "login"
 login.init_app(app)
 mail = Mail(app)
-=======
-# Gemini is optional. GitHub Pages and a public host must boot without an API key.
-client = None
-_gemini_key = app.config.get("GEMINI_API_KEY") or ""
-if _gemini_key and _gemini_key != "your-gemini-api-key":
-    try:
-        from google import genai
-        client = genai.Client(api_key=_gemini_key)
-    except Exception:
-        app.logger.exception("Gemini client was not created")
-        client = None
-
->>>>>>> 0cd7ec462fba81cbe1b4e062d69fd3ec2fec8fc1
 bootstrap = Bootstrap(app)
 moment = Moment(app)
 
@@ -40,9 +30,19 @@ def get_locale():
 
 babel = Babel(app, locale_selector=get_locale)
 
-<<<<<<< HEAD
-# Initialize Google GenAI Client from environment variable
-client = genai.Client(api_key=app.config.get("GEMINI_API_KEY"))
+# Gemini is optional. The site must boot when no API key is configured.
+client = None
+_gemini_key = app.config.get("GEMINI_API_KEY") or ""
+if _gemini_key and _gemini_key != "your-gemini-api-key":
+    try:
+        from google import genai
+        client = genai.Client(
+            api_key=_gemini_key,
+            http_options={"timeout": 12000},
+        )
+    except Exception:
+        app.logger.exception("Gemini client was not created")
+        client = None
 
 app.logger.info('SQLAlchemy initialized')
 
@@ -50,14 +50,6 @@ app.logger.info('SQLAlchemy initialized')
 # app.extensions['sqlalchemy'], so flask_msearch cannot read .db from it.
 search = Search(db=db)
 search.init_app(app)
-=======
-search = Search()
-try:
-    search.init_app(app)
-except Exception as e:
-    print(f"Error initializing search: {e}")
-
->>>>>>> 0cd7ec462fba81cbe1b4e062d69fd3ec2fec8fc1
 app.logger.info('flask_msearch initialized')
 
 if not app.debug:
@@ -89,4 +81,5 @@ if not app.debug:
     root.info('Microblog startup')
 
 # You must keep the routes at the end.
-from app import routes, errors
+# models registers Flask-Login's user_loader; without this import every page raises.
+from app import routes, models, errors
