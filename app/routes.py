@@ -1,10 +1,7 @@
-from datetime import datetime
 from flask import render_template, jsonify, flash, redirect, url_for, request, g, session, send_from_directory
 import requests
-from flask_login import login_user, logout_user, current_user, login_required
-from urllib.parse import urlparse
-from werkzeug.utils import secure_filename
 from flask_babel import _, get_locale
+<<<<<<< HEAD
 from app import app, db, client
 from app.forms import zhLoginForm, LoginForm, RegistrationForm, zhRegistrationForm, EditProfileForm, zhEditProfileForm, PostForm, AddAreaForm, AddDistricForm,AddMTRForm, \
     ResetPasswordRequestForm, zhResetPasswordRequestForm, ResetPasswordForm, zhResetPasswordForm, ImageForm, AddProductForm,AddCategoryForm,AddBrandForm,AddMeetupForm,AddConditionForm
@@ -12,11 +9,15 @@ from app.models import User, Post, Image, Product,Category,Brand,Area,Distric,MT
 from app.email import send_password_reset_email
 from app.govdata import fetch_en_carparks, fetch_zh_carparks, read_excel_rows, get_carpark_by_id, search_carparks, vacancy_cards, get_coverage_stats
 from werkzeug.utils import secure_filename
+=======
+from app import app
+from app.govdata import fetch_en_carparks, fetch_zh_carparks, read_excel_rows
+from app.parking_advisor import answer_parking_question
+from app.vacancy_history import record_hourly_snapshot, typical_for_now, load_history, start_hourly_recorder
+>>>>>>> 0cd7ec462fba81cbe1b4e062d69fd3ec2fec8fc1
 import json
 import xml.etree.ElementTree as ET
 import logging
-from google import genai
-
 import pandas as pd
 import os
 
@@ -96,167 +97,24 @@ def mmetered_parking_spaces_hong_kong_island():
 def privacy_policy():
     return render_template('privacy_policy.html.j2')
 
-def is_chinese(text):
-    return any('\u4e00' <= char <= '\u9fff' for char in text)
-
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    data = request.get_json()
-    message = data.get('message')
-    mode = data.get('mode', 'normal')  # Default mode is 'normal'
-
-    # Default prompt with instructions for handling car park queries
-    default_prompt = (
-        "You have access to the Ease Park Hong Kong car park information API. You are not a programming language AI maker, don't include programming language in responses to users. Here are the key endpoints and their purposes:\n"
-        "1. https://api.data.gov.hk/v1/carpark-info-vacancy: Provides information on car park names.\n"
-        "2. https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US: Provides real-time vacancy information for private cars, motorcycles, LGVs, HGVs, and coaches.\n"
-        "Note: These endpoints use 'park_Id' to connect car park names with their respective vacancy data.\n"
-        "When a user provides a car park name, you should:\n"
-        "1. Search for the park ID using the car park name in the endpoint: https://api.data.gov.hk/v1/carpark-info-vacancy.\n"
-        "2. Use the park ID to retrieve live vacancy information from the endpoint: https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US.\n"
-        "3. Extract and present the vacancy information for private cars, motorcycles, LGVs, HGVs, and coaches.\n"
-        "Example Response: 'Vacancy information for 山頂廣場 (The Peak Galleria): Private Cars: 24 spaces available out of 45 total. Motorcycles: 1 space available out of 1 total. LGVs: 0 spaces available out of 0 total. HGVs: 0 spaces available out of 0 total. Coaches: 0 spaces available out of 0 total.'\n"
-        "If the user requests additional information about the car park from https://resource.data.one.gov.hk/td/carpark/basic_info_all.json, you should:\n"
-        "1. Fetch the car park details from the provided JSON endpoint.\n"
-        "2. Extract and present the requested information (e.g., website, contact number, address, etc.).\n"
-        "Example Response: 'Information for 天晴邨第一期停車場 (Phase 1 Carpark of Tin Ching Estate): Website: [website_en]'\n"
-        "If the exact car park name cannot be found, respond with '[[NOT FOUND]]' followed by a list of the 5 most similar car park names for the user to choose from.\n"
-        "Example Response: '[[NOT FOUND]] The car park name you provided could not be found. Here are 5 similar car park names: 1. 天晴邨第一期停車場, 2. 天晴邨第二期停車場, 3. 天晴邨第三期停車場, 4. 天晴邨第四期停車場, 5. 天晴邨第五期停車場.'\n"
-        "Ensure the final response contains information for private cars, motorcycles, LGVs, HGVs, coaches when applicable.\n"
-        "Please ensure the response is clear, concise, and formatted in a user-friendly manner.\n"
-    )
-
+    payload = request.get_json(silent=True) or {}
+    message = (payload.get('message') or '').strip()
     if not message:
         return jsonify({'error': 'No message provided'}), 400
 
     try:
-        # Handle car park mode
-        if mode == 'car_park':
-            # Check if it's a simple car park query
-            query_prompt = f"這只是在查詢單一個停車場的空缺或資訊的嗎？,只是回應(是)或(否)\: {message}"
-            query_response = client.models.generate_content(
-                model="gemini-2.0-flash", contents=query_prompt
-            )
+        carparks = fetch_zh_carparks()
+    except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+        try:
+            carparks = fetch_en_carparks()
+        except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+            carparks = []
 
-            if '是' in query_response.text:
-                # Select car park info source based on language
-                if is_chinese(message):
-                    response1 = requests.get('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json')
-                else:
-                    response1 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy')
-                data1 = response1.json()
+    reply = answer_parking_question(message, carparks)
+    return jsonify({'reply': reply})
 
-                # Fetch vacancy info
-                response2 = requests.get('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US')
-                data2 = response2.json()
-
-                # Combine data for the AI
-                combined_data = {
-                    'carpark_info': data1,
-                    'vacancy_info': data2
-                }
-                prompt = f"{default_prompt}\nMessage: {message}\nCarpark Info: {combined_data}"
-
-                # Retry loop for generating response (max 5 attempts)
-                max_attempts = 5
-                for attempt in range(max_attempts):
-                    # Generate initial response
-                    response = client.models.generate_content(
-                        model="gemini-2.0-flash", contents=prompt
-                    )
-                    initial_response = response.text
-
-                    # Check if car park was not found
-                    if "[[NOT FOUND]]" in initial_response:
-                        final_response_text = initial_response.replace("[[NOT FOUND]]", "此停車場未找到關鍵字。")
-                        break  # Exit loop if we get a valid "not found" response
-                    else:
-                        # Refine the response
-                        refinement_prompt = (
-                            "Please refine the following response to only include the necessary vacancy and data information for the user:\n"
-                            "You are not a programming language maker, delete all programming language, only keep user need data\n"
-                            f"{initial_response}"
-                        )
-                        refinement_response = client.models.generate_content(
-                            model="gemini-2.0-flash", contents=refinement_prompt
-                        )
-                        final_response_text = refinement_response.text
-
-                        # Break if response is not "(undefined)"
-                        if final_response_text.strip() != "(undefined)":
-                            break
-                        else:
-                            logging.warning(f"Attempt {attempt + 1}/{max_attempts}: Response was '(undefined)', retrying...")
-                            if attempt == max_attempts - 1:
-                                # After max attempts, generate similar car parks
-                                similarity_prompt = (
-                                    f"根據以下停車場名稱 '{message}'，從以下數據中找到最多5個名稱相似或地理位置相近的停車場名稱，並以繁體中文列出:\n"
-                                    f"Carpark Info: {data1}\n"
-                                    "只需提供最多5個停車場名稱的編號列表，例如:\n"
-                                    "1. 山頂廣場\n2. 山頂停車場\n3. 中環廣場\n4. 銅鑼灣停車場\n5. 尖沙咀碼頭停車場"
-                                )
-                                try:
-                                    similarity_response = client.models.generate_content(
-                                        model="gemini-2.0-flash", contents=similarity_prompt
-                                    )
-                                    similar_car_parks_text = similarity_response.text
-                                except Exception as e:
-                                    logging.error(f"Error generating similar car parks: {str(e)}")
-                                    similar_car_parks_text = "未能生成相似的停車場列表。"
-                                final_response_text = (
-                                    "此停車場未找到關鍵字。以下是5個相似的停車場:\n"
-                                    f"{similar_car_parks_text}"
-                                )
-
-                # Translate to Traditional Chinese if the user's message is in Chinese
-                if is_chinese(message):
-                    translation_prompt = (
-                        "請將以下內容翻譯成繁體中文，並確保自然流暢且不讓使用者察覺是翻譯:\n"
-                        f"{final_response_text}"
-                    )
-                    try:
-                        translation_response = client.models.generate_content(
-                            model="gemini-2.0-flash", contents=translation_prompt
-                        )
-                        final_response_text = translation_response.text
-                    except Exception as e:
-                        logging.error(f"Error translating response: {str(e)}")
-                        # Keep original response if translation fails
-
-                return jsonify({'reply': final_response_text})
-            else:
-                # Handle non-simple car park queries
-                prompt_message = f"{default_prompt} {message}"
-        else:
-            # Handle non-car_park mode
-            prompt_message = message
-
-        # Generate response for non-car_park mode or complex queries
-        response = client.models.generate_content(
-            model="gemini-2.0-flash", contents=prompt_message
-        )
-        final_response_text = response.text
-
-        # Translate to Traditional Chinese if the user's message is in Chinese
-        if is_chinese(message):
-            translation_prompt = (
-                "請將以下內容翻譯成繁體中文，並確保自然流暢且不讓使用者察覺是翻譯:\n"
-                f"{final_response_text}"
-            )
-            try:
-                translation_response = client.models.generate_content(
-                    model="gemini-2.0-flash", contents=translation_prompt
-                )
-                final_response_text = translation_response.text
-            except Exception as e:
-                logging.error(f"Error translating response: {str(e)}")
-                # Keep original response if translation fails
-
-        return jsonify({'reply': final_response_text})
-
-    except Exception as e:
-        logging.error(f"Error generating content: {str(e)}")
-        return jsonify({'error': 'Failed to generate content'}), 500
 
 @app.route('/zh/news')
 def zh_news():
@@ -392,14 +250,95 @@ def zh_camera():
 
 @app.before_request
 def before_request():
-    if current_user.is_authenticated:
-        current_user.last_seen = datetime.utcnow()
-        db.session.commit()
     g.locale = str(get_locale())
 
 @app.route('/ai-chatbox')
 def ai_chatbox():
     return render_template('ai-chatbox.html.j2')
+
+
+def _map_payload(chinese):
+    carparks = fetch_zh_carparks()
+    park_ids = [str(item.get("park_id") or "") for item in carparks if item.get("park_id")]
+    try:
+        record_hourly_snapshot(carparks)
+        typical = typical_for_now(park_ids)
+    except Exception:
+        app.logger.exception("vacancy history unavailable")
+        typical = {}
+    features = []
+    for carpark in carparks:
+        try:
+            latitude = float(carpark.get("latitude"))
+            longitude = float(carpark.get("longitude"))
+        except (TypeError, ValueError):
+            continue
+        park_id = str(carpark.get("park_id") or "")
+        history = typical.get(park_id, {"samples": 0, "private_car": None, "motorcycle": None})
+        features.append({
+            "id": park_id,
+            "name": (carpark.get("name_tc") if chinese else carpark.get("name_en")) or carpark.get("name_tc") or "",
+            "address": (carpark.get("displayAddress_tc") if chinese else carpark.get("displayAddress_en")) or "",
+            "lat": latitude,
+            "lng": longitude,
+            "status": carpark.get("opening_status") or "",
+            "private_car": carpark.get("privateCar_vacancy"),
+            "motorcycle": carpark.get("motorCycle_vacancy"),
+            "typical_private_car": history["private_car"],
+            "typical_motorcycle": history["motorcycle"],
+            "samples": history["samples"],
+        })
+    return features
+
+
+_DOCS = os.path.join(os.path.dirname(app.root_path), "docs")
+
+
+@app.route('/onestop.css')
+def onestop_css():
+    return send_from_directory(_DOCS, "onestop.css")
+
+
+@app.route('/onestop.js')
+def onestop_js():
+    return send_from_directory(_DOCS, "onestop.js")
+
+
+@app.route('/advisor.js')
+def advisor_js():
+    return send_from_directory(_DOCS, "advisor.js")
+
+
+@app.route('/api/vacancy-history')
+def vacancy_history_api():
+    return jsonify(load_history())
+
+
+@app.route('/map')
+def carpark_map():
+    return render_template(
+        'carpark_map.html.j2',
+        chinese=False,
+        favorite_ids=session.get('favorite_carparks', []),
+    )
+
+
+@app.route('/zh/map')
+def zh_carpark_map():
+    return render_template(
+        'carpark_map.html.j2',
+        chinese=True,
+        favorite_ids=session.get('favorite_carparks', []),
+    )
+
+
+@app.route('/api/map-carparks')
+def map_carparks():
+    chinese = request.args.get("lang") == "zh"
+    try:
+        return jsonify(_map_payload(chinese))
+    except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+        return jsonify([])
 
 @app.route('/')
 def index():
@@ -573,202 +512,6 @@ def zh_new_territories():
     carparks = [cp for cp in _safe_zh_carparks() if cp.get('district_en') in new_territories_districts]
     return render_template('zh.new_territories.html.j2', carparks=carparks)
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    form = LoginForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
-        if user is None or not user.check_password(form.password.data):
-            flash(_('Invalid username or password'))
-            return redirect(url_for('login'))
-        login_user(user, remember=form.remember_me.data)
-        session['user_id'] = user.id
-        next_page = request.args.get('next')
-        if not next_page or urlparse(next_page).netloc != '':
-            next_page = url_for('index')
-        return redirect(next_page)
-    return render_template('login.html.j2', title=_('Sign In'), form=form)
-
-@app.route('/zh/login', methods=['GET', 'POST'])
-def zh_login():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    form = zhLoginForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
-        if user is None or not user.check_password(form.password.data):
-            flash(_('Invalid username or password'))
-            return redirect(url_for('login'))
-        login_user(user, remember=form.remember_me.data)
-        session['user_id'] = user.id
-        next_page = request.args.get('next')
-        if not next_page or urlparse(next_page).netloc != '':
-            next_page = url_for('index')
-        return redirect(next_page)
-    return render_template('zh.login.html.j2', title=_('Sign In'), form=form)
-
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        user = User(username=form.username.data, email=form.email.data)
-        user.set_password(form.password.data)
-        db.session.add(user)
-        db.session.commit()
-        flash(_('Congratulations, you are now a registered user!'))
-        return redirect(url_for('login'))
-    return render_template('register.html.j2', title=_('Register'), form=form)
-
-@app.route('/zh/register', methods=['GET', 'POST'])
-def zh_register():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    form = zhRegistrationForm()
-    if form.validate_on_submit():
-        existing_user = User.query.filter_by(email=form.email.data).first()
-        if existing_user is None:
-            user = User(username=form.username.data, email=form.email.data)
-            user.set_password(form.password.data)
-            db.session.add(user)
-            db.session.commit()
-            flash(_('Congratulations, you are now a registered user!'))
-            return redirect(url_for('login'))
-        else:
-            flash(_('電子郵件地址已經註冊。'))
-    return render_template('zh.register.html.j2', title=_('Register'), form=form)
-
-
-
-@app.route('/reset_password_request', methods=['GET', 'POST'])
-def reset_password_request():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    form = ResetPasswordRequestForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
-        if user:
-            send_password_reset_email(user)
-        flash(
-            _('Check your email for the instructions to reset your password'))
-        return redirect(url_for('login'))
-    return render_template('reset_password_request.html.j2',
-                           title=_('Reset Password'), form=form)
-
-@app.route('/zh/reset_password_request', methods=['GET', 'POST'])
-def zh_reset_password_request():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    form = zhResetPasswordRequestForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
-        if user:
-            send_password_reset_email(user)
-        flash(_('請檢查您的電子郵件以獲取重設密碼的指示'))
-        return redirect(url_for('login'))
-    return render_template('zh.reset_password_request.html.j2',
-                           title=_('重設密碼'), form=form)
-
-
-@app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    user = User.verify_reset_password_token(token)
-    if user is None:
-        return redirect(url_for('index'))
-    form = ResetPasswordForm()
-    if form.validate_on_submit():
-        user.set_password(form.password.data)
-        db.session.commit()
-        flash(_('Your password has been reset.'))
-        return redirect(url_for('login'))
-    return render_template('reset_password.html.j2', form=form)
-
-@app.route('/zh/reset_password/<token>', methods=['GET', 'POST'])
-def zh_reset_password(token):
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    user = User.verify_reset_password_token(token)
-    if user is None:
-        return redirect(url_for('index'))
-    form = zhResetPasswordForm()
-    if form.validate_on_submit():
-        user.set_password(form.password.data)
-        db.session.commit()
-        flash(_('Your password has been reset.'))
-        return redirect(url_for('login'))
-    return render_template('zh.reset_password.html.j2', form=form)
-
-
-@app.route('/user/<username>')
-@login_required
-def user(username):
-    user = User.query.filter_by(username=username).first_or_404()
-    page = request.args.get('page', 1, type=int)
-    posts = user.followed_posts().paginate(
-        page=page, per_page=app.config["POSTS_PER_PAGE"], error_out=False)
-    next_url = url_for(
-        'index', page=posts.next_num) if posts.next_num else None
-    prev_url = url_for(
-        'index', page=posts.prev_num) if posts.prev_num else None
-    return render_template('user.html.j2', user=user, posts=posts.items,
-                           next_url=next_url, prev_url=prev_url)
-
-@app.route('/zh/user/<username>')
-@login_required
-def zh_user(username):
-    user = User.query.filter_by(username=username).first_or_404()
-    page = request.args.get('page', 1, type=int)
-    posts = user.followed_posts().paginate(
-        page=page, per_page=app.config["POSTS_PER_PAGE"], error_out=False)
-    next_url = url_for(
-        'index', page=posts.next_num) if posts.next_num else None
-    prev_url = url_for(
-        'index', page=posts.prev_num) if posts.prev_num else None
-    return render_template('zh.user.html.j2', user=user, posts=posts.items,
-                           next_url=next_url, prev_url=prev_url)
-
-
-@app.route('/edit_profile', methods=['GET', 'POST'])
-@login_required
-def edit_profile():
-    form = EditProfileForm(current_user.username)
-    if form.validate_on_submit():
-        current_user.username = form.username.data
-        current_user.about_me = form.about_me.data
-        db.session.commit()
-        flash(_('Your changes have been saved.'))
-        return redirect(url_for('edit_profile'))
-    elif request.method == 'GET':
-        form.username.data = current_user.username
-        form.about_me.data = current_user.about_me
-    return render_template('edit_profile.html.j2', title=_('Edit Profile'),
-                           form=form)
-
-@app.route('/zh/edit_profile', methods=['GET', 'POST'])
-@login_required
-def zh_edit_profile():
-    form = zhEditProfileForm(current_user.username)
-    if form.validate_on_submit():
-        current_user.username = form.username.data
-        current_user.about_me = form.about_me.data
-        db.session.commit()
-        flash(_('Your changes have been saved.'))
-        return redirect(url_for('edit_profile'))
-    elif request.method == 'GET':
-        form.username.data = current_user.username
-        form.about_me.data = current_user.about_me
-    return render_template('zh.edit_profile.html.j2', title=_('Edit Profile'),
-                           form=form)
 
 @app.route('/result', methods=['GET'])
 def result():
@@ -814,42 +557,6 @@ def search():
     results = search_carparks(query, 'en')[:8]
     return render_template('result.html.j2', carparks=results)
 
-@app.route('/settings', methods=['GET', 'POST'])
-def settings():
-    if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-
-        current_user.username = username
-        current_user.email = email
-        db.session.commit()
-
-        flash('Settings updated successfully', 'success')
-        return redirect(url_for('settings'))
-
-    return render_template('settings.html.j2')
-
-@app.route('/zh/settings', methods=['GET', 'POST'])
-def zh_settings():
-    if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-
-        current_user.username = username
-        current_user.email = email
-        db.session.commit()
-
-        flash('Settings updated successfully', 'success')
-        return redirect(url_for('settings'))
-
-    return render_template('zh.settings.html.j2')
-
-@app.route('/change_language', methods=['POST'])
-def change_language():
-    language = request.form['language']
-    session['language'] = language
-    flash('Language changed successfully', 'success')
-    return redirect(url_for('settings'))
 
 @app.route('/zh/search', methods=['GET'])
 def zh_search():
@@ -857,35 +564,7 @@ def zh_search():
     results = search_carparks(query, 'zh') if query else []
     return render_template('zh.result.html.j2', carparks=results, search_query=query)
 
-@app.route('/follow/<username>')
-@login_required
-def follow(username):
-    user = User.query.filter_by(username=username).first()
-    if user is None:
-        flash(_('User %(username)s not found.', username=username))
-        return redirect(url_for('index'))
-    if user == current_user:
-        flash(_('You cannot follow yourself!'))
-        return redirect(url_for('user', username=username))
-    current_user.follow(user)
-    db.session.commit()
-    flash(_('You are following %(username)s!', username=username))
-    return redirect(url_for('user', username=username))
-
-@app.route('/unfollow/<username>')
-@login_required
-def unfollow(username):
-    user = User.query.filter_by(username=username).first()
-    if user is None:
-        flash(_('User %(username)s not found.', username=username))
-        return redirect(url_for('index'))
-    if user == current_user:
-        flash(_('You cannot unfollow yourself!'))
-        return redirect(url_for('user', username=username))
-    current_user.unfollow(user)
-    db.session.commit()
-    flash(_('You are not following %(username)s.', username=username))
-    return redirect(url_for('user', username=username))
+start_hourly_recorder()
 
 if __name__ == '__main__':
     app.run(debug=True)
