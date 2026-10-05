@@ -1,6 +1,8 @@
-"""Cached fetches for Hong Kong government open data."""
+"""Cached fetches for Hong Kong car park and government open data."""
 import json
+import threading
 import time
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
@@ -9,17 +11,69 @@ import requests
 # Vacancy data changes often; keep a short cache so repeat page loads stay fast.
 JSON_TTL_SECONDS = 60
 EXCEL_TTL_SECONDS = 300
+OSM_TTL_SECONDS = 24 * 3600
+OSM_FAIL_TTL_SECONDS = 600
 REQUEST_TIMEOUT = 8
+OSM_TIMEOUT = 25
 
 VEHICLE_TYPES = ("privateCar", "motorCycle", "LGV", "HGV", "coach")
-URL_EN_INFO = "https://api.data.gov.hk/v1/carpark-info-vacancy"
+HIDDEN_VACANCY = {"N/A", "none", "-1", "0", "", "None"}
+URL_EN_INFO = "https://api.data.gov.hk/v1/carpark-info-vacancy?lang=en_US"
+URL_ZH_INFO = "https://api.data.gov.hk/v1/carpark-info-vacancy?lang=zh_TW"
 URL_VACANCY = (
     "https://api.data.gov.hk/v1/carpark-info-vacancy"
     "?data=vacancy&vehicleTypes=privateCar,motorCycle,LGV,HGV,coach&lang=en_US"
 )
-URL_ZH_INFO = "https://resource.data.one.gov.hk/td/carpark/basic_info_all.json"
+URL_TD_BASIC = "https://resource.data.one.gov.hk/td/carpark/basic_info_all.json"
+OSM_ENDPOINTS = (
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+)
+OSM_QUERY = """
+[out:json][timeout:25];
+(
+  nwr["amenity"="parking"]["name"](22.15,113.82,22.57,114.44);
+);
+out center tags;
+"""
+OSM_COUNT_QUERY = """
+[out:json][timeout:25];
+(
+  nwr["amenity"="parking"]["parking"!="lane"]["parking"!="street_side"](22.15,113.82,22.57,114.44);
+);
+out count;
+"""
+# Seed from a recent Overpass count so the coverage meter can render before refresh.
+OSM_PARKING_TOTAL_FALLBACK = 3042
+OSM_SKIP_PARKING = {"lane", "street_side", "on_kerb", "half_on_kerb"}
+OSM_SKIP_ACCESS = {"private", "no", "military", "residents", "staff", "permit"}
+# Match parks within about 100 metres when merging OSM into the live feed.
+DEDUP_DEGREE2 = (0.001) ** 2
+
+DISTRICT_TC = {
+    "Central & Western": "中西區",
+    "Wan Chai": "灣仔",
+    "Eastern": "東區",
+    "Southern": "南區",
+    "Yau Tsim Mong": "油尖旺",
+    "Sham Shui Po": "深水埗",
+    "Kowloon City": "九龍城",
+    "Wong Tai Sin": "黃大仙",
+    "Kwun Tong": "觀塘",
+    "Kwai Tsing": "葵青",
+    "Tsuen Wan": "荃灣",
+    "Yuen Long": "元朗",
+    "Tuen Mun": "屯門",
+    "North": "北區",
+    "Tai Po": "大埔",
+    "Sha Tin": "沙田",
+    "Sai Kung": "西貢",
+    "Islands": "離島",
+}
 
 _CACHE = {}
+_OSM_LOCK = threading.Lock()
+_OSM_LOADING = False
 
 
 def _cache_get(key, ttl):
@@ -70,6 +124,75 @@ def read_excel_rows(url):
     return _cache_set(url, rows)
 
 
+def _normalize_district(value):
+    text = (value or "").strip()
+    if text.endswith(" District"):
+        text = text[:-9]
+    if text.endswith("區") and text not in DISTRICT_TC.values():
+        inverse = {zh: en for en, zh in DISTRICT_TC.items()}
+        text = inverse.get(text, text)
+    return text
+
+
+def _status_upper(value):
+    text = str(value or "OPEN").strip().upper()
+    if text in {"OPEN", "CLOSED", "NONE"}:
+        return text
+    return "OPEN"
+
+
+def _name_key(value):
+    text = (value or "").lower()
+    for token in ("car park", "carpark", "parking", "停車場", "停車埸"):
+        text = text.replace(token, "")
+    return "".join(ch for ch in text if ch.isalnum())
+
+
+def _coords(carpark):
+    try:
+        return float(carpark.get("latitude")), float(carpark.get("longitude"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _classify_operator(carpark):
+    nature = (carpark.get("nature") or "").lower()
+    website = " ".join([
+        str(carpark.get("website") or ""),
+        str(carpark.get("website_en") or ""),
+        str(carpark.get("website_tc") or ""),
+    ]).lower()
+    name = " ".join([
+        str(carpark.get("name") or ""),
+        str(carpark.get("name_tc") or ""),
+        str(carpark.get("operator_raw") or ""),
+    ]).lower()
+    park_id = str(carpark.get("park_Id") or carpark.get("park_id") or "")
+
+    if park_id.startswith("osm-"):
+        raw = (carpark.get("operator_raw") or "").strip()
+        return "private", raw or "OpenStreetMap", raw or "OpenStreetMap"
+    if nature == "government" or "gov.hk" in website or "housingauthority" in website:
+        return "government", "Government", "政府"
+    if "wilson" in website or "wilson" in name:
+        return "private", "Wilson Parking", "威信停車場"
+    if "sino" in website or "sinoparking" in name:
+        return "private", "Sino Parking", "信和停車場"
+    if "linkreit" in website or "link.com.hk" in website:
+        return "private", "Link", "領展"
+    if "mtr.com.hk" in website:
+        return "private", "MTR", "港鐵"
+    if "mackcarpark" in website or "mack " in name:
+        return "private", "Mack", "Mack"
+    if "urban" in website and "park" in website:
+        return "private", "Urban", "富城"
+    if nature == "commercial":
+        return "private", "Commercial", "商業"
+    if any(token in name for token in ("estate", "邨", "房屋")):
+        return "government", "Housing", "房屋"
+    return "private", "Private operator", "私人營辦商"
+
+
 def _vacancy_by_park(vacancy_payload):
     mapping = {}
     for item in vacancy_payload.get("results", []):
@@ -81,35 +204,698 @@ def _vacancy_by_park(vacancy_payload):
     return mapping
 
 
-def _apply_vacancy(carparks, vacancy_payload, id_key):
-    vacancy_info = _vacancy_by_park(vacancy_payload)
-    for carpark in carparks:
-        park_id = carpark.get(id_key)
-        if park_id not in vacancy_info:
+def _apply_vacancy(carpark, vacancy_info):
+    park_id = carpark.get("park_Id") or carpark.get("park_id")
+    slots = vacancy_info.get(park_id) or vacancy_info.get(str(park_id)) or {}
+    for vehicle_type in VEHICLE_TYPES:
+        slot = slots.get(vehicle_type) or {}
+        vacancy = slot.get("vacancy", "N/A")
+        if vacancy is None:
+            vacancy = "N/A"
+        carpark["{}_vacancy".format(vehicle_type)] = str(vacancy)
+        carpark["{}_vacancy_type".format(vehicle_type)] = slot.get("vacancy_type") or ""
+        carpark["{}_lastupdate".format(vehicle_type)] = slot.get("lastupdate") or "—"
+        carpark["{}_vacancyEV".format(vehicle_type)] = slot.get("vacancyEV")
+        carpark["{}_vacancyDIS".format(vehicle_type)] = slot.get("vacancyDIS")
+    return carpark
+
+
+def _photo_url(row, td_photos):
+    # One-stop malls use banner/thumbnail/square. TD parks publish carpark_photo.
+    rendition = row.get("renditionUrls") if isinstance(row.get("renditionUrls"), dict) else {}
+    for key in ("banner", "thumbnail", "square", "carpark_photo"):
+        url = str(rendition.get(key) or "").strip()
+        if url:
+            return url
+    return td_photos.get(str(row.get("park_Id") or ""), "")
+
+
+def _td_photo_map():
+    try:
+        payload = get_json(URL_TD_BASIC, utf8_sig=True)
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return {}
+    photos = {}
+    for item in payload.get("car_park") or []:
+        url = str(item.get("carpark_photo") or "").strip()
+        park_id = str(item.get("park_id") or "")
+        if park_id and url:
+            photos[park_id] = url
+    return photos
+
+
+def _enrich_live_park(en_row, zh_row, vacancy_info, td_photos=None):
+    if td_photos is None:
+        td_photos = _td_photo_map()
+    park_id = str(en_row.get("park_Id") or zh_row.get("park_Id") or "")
+    district_en = _normalize_district(en_row.get("district") or zh_row.get("district") or "")
+    carpark = dict(en_row)
+    carpark["park_Id"] = park_id
+    carpark["park_id"] = park_id
+    carpark["district"] = district_en
+    carpark["district_en"] = district_en
+    carpark["district_tc"] = DISTRICT_TC.get(district_en) or zh_row.get("district") or district_en
+    carpark["name"] = en_row.get("name") or zh_row.get("name") or ""
+    carpark["name_tc"] = zh_row.get("name") or en_row.get("name") or ""
+    carpark["displayAddress"] = en_row.get("displayAddress") or ""
+    carpark["displayAddress_tc"] = zh_row.get("displayAddress") or carpark["displayAddress"]
+    carpark["website"] = en_row.get("website") or zh_row.get("website") or ""
+    carpark["website_en"] = carpark["website"]
+    carpark["website_tc"] = zh_row.get("website") or carpark["website"]
+    carpark["photo"] = _photo_url(en_row, td_photos)
+    carpark["opening_status"] = _status_upper(en_row.get("opening_status") or zh_row.get("opening_status"))
+    carpark["has_live_vacancy"] = True
+    carpark["source"] = "live"
+    private_car = carpark.get("privateCar") or {}
+    hourly = private_car.get("hourlyCharges") or []
+    carpark["price"] = hourly[0]["price"] if hourly else "N/A"
+    _apply_vacancy(carpark, vacancy_info)
+    kind, label, label_tc = _classify_operator(carpark)
+    carpark["operator_kind"] = kind
+    carpark["operator_label"] = label
+    carpark["operator_label_tc"] = label_tc
+    return carpark
+
+
+def _osm_useful(tags):
+    if tags.get("parking") in OSM_SKIP_PARKING:
+        return False
+    if tags.get("access") in OSM_SKIP_ACCESS:
+        return False
+    if tags.get("parking") in {"multi-storey", "underground", "garage", "rooftop"}:
+        return True
+    if tags.get("fee") == "yes" or tags.get("operator"):
+        return True
+    return False
+
+
+def _element_coords(element):
+    if "lat" in element and "lon" in element:
+        return element["lat"], element["lon"]
+    center = element.get("center") or {}
+    if "lat" in center and "lon" in center:
+        return center["lat"], center["lon"]
+    return None
+
+
+def _overpass(query):
+    encoded = urllib.parse.urlencode({"data": query})
+    headers = {
+        "User-Agent": "EaseParkHK-FYP/1.0",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    }
+    last_error = None
+    for endpoint in OSM_ENDPOINTS:
+        try:
+            response = requests.post(
+                endpoint,
+                data=encoded,
+                headers=headers,
+                timeout=OSM_TIMEOUT,
+            )
+            response.raise_for_status()
+            return response.json()
+        except (requests.RequestException, ValueError) as error:
+            last_error = error
+    raise RuntimeError("OpenStreetMap query failed: {}".format(last_error))
+
+
+def _download_osm_parking_total():
+    payload = _overpass(OSM_COUNT_QUERY)
+    for element in payload.get("elements") or []:
+        if element.get("type") != "count":
             continue
+        tags = element.get("tags") or {}
+        return int(tags.get("total") or 0)
+    return OSM_PARKING_TOTAL_FALLBACK
+
+
+def _osm_total_value():
+    cached = _cache_get("osm_parking_total", OSM_TTL_SECONDS)
+    if cached:
+        return int(cached)
+    entry = _CACHE.get("osm_parking_total")
+    if entry:
+        return int(entry["data"])
+    return OSM_PARKING_TOTAL_FALLBACK
+
+
+def _update_coverage_stats(listed_parks):
+    listed_count = len(listed_parks or [])
+    live_count = sum(1 for park in listed_parks if park.get("has_live_vacancy"))
+    total = max(_osm_total_value(), listed_count)
+    percent = (100.0 * listed_count / total) if total else 0
+    live_percent = (100.0 * live_count / total) if total else 0
+    stats = {
+        "listed_count": listed_count,
+        "live_count": live_count,
+        "total_count": total,
+        "percent": round(percent, 1),
+        "percent_int": int(round(percent)),
+        "live_percent": round(live_percent, 1),
+        "live_percent_int": int(round(live_percent)),
+        "bar_width": min(100, max(0, round(percent, 1))),
+    }
+    return _cache_set("coverage_stats", stats)
+
+
+def get_coverage_stats():
+    cached = _cache_get("coverage_stats", JSON_TTL_SECONDS)
+    if cached is not None:
+        return cached
+    entry = _CACHE.get("coverage_stats")
+    if entry:
+        return entry["data"]
+    return None
+
+
+def _download_osm_carparks():
+    payload = _overpass(OSM_QUERY)
+
+    carparks = []
+    for element in payload.get("elements") or []:
+        tags = element.get("tags") or {}
+        if not _osm_useful(tags):
+            continue
+        coords = _element_coords(element)
+        if not coords:
+            continue
+        lat, lng = coords
+        name_en = tags.get("name:en") or tags.get("name") or ""
+        name_tc = tags.get("name:zh-Hant") or tags.get("name:zh") or tags.get("name") or name_en
+        if not name_en:
+            continue
+        address_parts = [
+            tags.get("addr:housenumber"),
+            tags.get("addr:street"),
+            tags.get("addr:district"),
+            tags.get("addr:city") or "Hong Kong",
+        ]
+        address = tags.get("addr:full") or ", ".join(part for part in address_parts if part)
+        park_id = "osm-{}{}".format(element.get("type", "n")[0], element.get("id"))
+        carpark = {
+            "park_Id": park_id,
+            "park_id": park_id,
+            "name": name_en,
+            "name_tc": name_tc,
+            "displayAddress": address,
+            "displayAddress_tc": address,
+            "latitude": lat,
+            "longitude": lng,
+            "website": tags.get("website") or "",
+            "website_en": tags.get("website") or "",
+            "website_tc": tags.get("website") or "",
+            "contactNo": tags.get("phone") or "",
+            "photo": tags.get("image") or "",
+            "opening_status": "OPEN",
+            "has_live_vacancy": False,
+            "source": "osm",
+            "nature": "commercial",
+            "operator_raw": tags.get("operator") or "",
+            "price": "N/A",
+            "privateCar_vacancy": "—",
+            "privateCar_vacancy_type": "location",
+            "privateCar_lastupdate": "—",
+        }
         for vehicle_type in VEHICLE_TYPES:
-            slot = vacancy_info[park_id].get(vehicle_type) or {}
-            carpark["{}_vacancy".format(vehicle_type)] = slot.get("vacancy", "N/A")
-            carpark["{}_vacancy_type".format(vehicle_type)] = slot.get("vacancy_type", "")
+            if vehicle_type == "privateCar":
+                continue
+            carpark["{}_vacancy".format(vehicle_type)] = "N/A"
+            carpark["{}_vacancy_type".format(vehicle_type)] = ""
+            carpark["{}_lastupdate".format(vehicle_type)] = "—"
+        kind, label, label_tc = _classify_operator(carpark)
+        carpark["operator_kind"] = kind
+        carpark["operator_label"] = label
+        carpark["operator_label_tc"] = label_tc
+        carparks.append(carpark)
     return carparks
+
+
+def _start_osm_refresh():
+    global _OSM_LOADING
+    with _OSM_LOCK:
+        if _OSM_LOADING:
+            return
+        _OSM_LOADING = True
+
+    def job():
+        global _OSM_LOADING
+        try:
+            try:
+                _cache_set("osm_parking_total", _download_osm_parking_total())
+            except Exception:
+                pass
+            _cache_set("osm_carparks", _download_osm_carparks())
+            live = _cache_get("live_carparks", JSON_TTL_SECONDS)
+            osm = _cache_get("osm_carparks", OSM_TTL_SECONDS) or []
+            if live is not None:
+                merged = live + _assign_osm_districts(_dedupe_osm(osm, live), live)
+                _update_coverage_stats(merged)
+        except Exception:
+            _cache_set("osm_carparks_fail", [])
+        finally:
+            with _OSM_LOCK:
+                _OSM_LOADING = False
+
+    threading.Thread(target=job, daemon=True).start()
+
+
+def fetch_osm_carparks():
+    cached = _cache_get("osm_carparks", OSM_TTL_SECONDS)
+    if cached is not None:
+        return cached
+    failed = _cache_get("osm_carparks_fail", OSM_FAIL_TTL_SECONDS)
+    if failed is not None:
+        return []
+    _start_osm_refresh()
+    return []
+
+
+def _assign_osm_districts(osm_carparks, live_carparks):
+    live_points = []
+    for carpark in live_carparks:
+        coords = _coords(carpark)
+        if not coords:
+            continue
+        live_points.append((coords[0], coords[1], carpark.get("district") or ""))
+
+    for carpark in osm_carparks:
+        coords = _coords(carpark)
+        district = ""
+        if coords and live_points:
+            best = None
+            for lat, lng, live_district in live_points:
+                dist = (coords[0] - lat) ** 2 + (coords[1] - lng) ** 2
+                if best is None or dist < best[0]:
+                    best = (dist, live_district)
+            district = (best or (0, ""))[1]
+        district = _normalize_district(district)
+        carpark["district"] = district
+        carpark["district_en"] = district
+        carpark["district_tc"] = DISTRICT_TC.get(district, district)
+    return osm_carparks
+
+
+def _dedupe_osm(osm_carparks, live_carparks):
+    live_points = []
+    live_names = set()
+    for carpark in live_carparks:
+        coords = _coords(carpark)
+        if coords:
+            live_points.append(coords)
+        live_names.add(_name_key(carpark.get("name")))
+        live_names.add(_name_key(carpark.get("name_tc")))
+    live_names.discard("")
+
+    unique = []
+    for carpark in osm_carparks:
+        name_keys = {_name_key(carpark.get("name")), _name_key(carpark.get("name_tc"))}
+        name_keys.discard("")
+        if name_keys & live_names:
+            continue
+        coords = _coords(carpark)
+        if coords and any(
+            (coords[0] - lat) ** 2 + (coords[1] - lng) ** 2 < DEDUP_DEGREE2
+            for lat, lng in live_points
+        ):
+            continue
+        unique.append(carpark)
+    return unique
+
+
+def fetch_live_carparks():
+    cached = _cache_get("live_carparks", JSON_TTL_SECONDS)
+    if cached is not None:
+        return cached
+
+    en_payload, zh_payload, vacancy_payload = get_json_parallel(
+        URL_EN_INFO,
+        URL_ZH_INFO,
+        URL_VACANCY,
+    )
+    td_photos = _td_photo_map()
+    vacancy_info = _vacancy_by_park(vacancy_payload)
+    zh_map = {
+        str(item.get("park_Id")): item
+        for item in (zh_payload.get("results") or [])
+    }
+    carparks = []
+    for en_row in en_payload.get("results") or []:
+        park_id = str(en_row.get("park_Id") or "")
+        carparks.append(_enrich_live_park(
+            en_row,
+            zh_map.get(park_id) or {},
+            vacancy_info,
+            td_photos,
+        ))
+    return _cache_set("live_carparks", carparks)
+
+
+def fetch_all_carparks():
+    live = fetch_live_carparks()
+    osm = _assign_osm_districts(_dedupe_osm(fetch_osm_carparks(), live), live)
+    parks = live + osm
+    _update_coverage_stats(parks)
+    return parks
 
 
 def fetch_en_carparks():
-    info_payload, vacancy_payload = get_json_parallel(URL_EN_INFO, URL_VACANCY)
-    carparks = list(info_payload.get("results") or [])
-    _apply_vacancy(carparks, vacancy_payload, "park_Id")
-    for carpark in carparks:
-        private_car = carpark.get("privateCar") or {}
-        hourly = private_car.get("hourlyCharges") or []
-        carpark["price"] = hourly[0]["price"] if hourly else "N/A"
-    return carparks
+    return fetch_all_carparks()
 
 
 def fetch_zh_carparks():
-    info_payload, vacancy_payload = get_json_parallel(
-        (URL_ZH_INFO, True),
-        URL_VACANCY,
+    return fetch_all_carparks()
+
+
+def get_carpark_by_id(park_id):
+    park_id = str(park_id or "")
+    for carpark in fetch_all_carparks():
+        if str(carpark.get("park_Id") or carpark.get("park_id")) == park_id:
+            return dict(carpark)
+    return None
+
+
+def search_carparks(query, lang="en"):
+    query = (query or "").strip().lower()
+    if not query:
+        return []
+    results = []
+    for carpark in fetch_all_carparks():
+        haystack = " ".join([
+            str(carpark.get("name") or ""),
+            str(carpark.get("name_tc") or ""),
+            str(carpark.get("displayAddress") or ""),
+            str(carpark.get("displayAddress_tc") or ""),
+            str(carpark.get("operator_label") or ""),
+            str(carpark.get("district") or ""),
+            str(carpark.get("district_tc") or ""),
+        ]).lower()
+        if query in haystack:
+            results.append(carpark)
+    return results
+
+
+def vacancy_cards(carpark, lang="en"):
+    names = {
+        "en": {
+            "privateCar": "Private Car",
+            "LGV": "Large Goods Vehicle",
+            "HGV": "Heavy Goods Vehicle",
+            "motorCycle": "Motor Cycle",
+            "coach": "Coach",
+        },
+        "zh": {
+            "privateCar": "私家車",
+            "LGV": "大型貨車",
+            "HGV": "重型貨車",
+            "motorCycle": "電單車",
+            "coach": "旅遊巴",
+        },
+    }[lang]
+    cards = []
+    for vehicle_type in VEHICLE_TYPES:
+        vacancy = carpark.get("{}_vacancy".format(vehicle_type))
+        if vacancy in HIDDEN_VACANCY or vacancy is None:
+            continue
+        extras = []
+        ev_count = slot_extra(carpark, vehicle_type, "vacancyEV")
+        accessible_count = slot_extra(carpark, vehicle_type, "vacancyDIS")
+        if lang == "zh":
+            if ev_count is not None:
+                extras.append("電動車充電位 {}".format(ev_count))
+            if accessible_count is not None:
+                extras.append("傷殘人士車位 {}".format(accessible_count))
+        else:
+            if ev_count is not None:
+                extras.append("EV charger spaces {}".format(ev_count))
+            if accessible_count is not None:
+                extras.append("Accessible spaces {}".format(accessible_count))
+        cards.append({
+            "type": names[vehicle_type],
+            "vacancy": vacancy,
+            "last_update": carpark.get("{}_lastupdate".format(vehicle_type)) or "—",
+            "extras": extras,
+        })
+    return cards
+
+
+_WEEKDAY_ORDER = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN", "PH")
+_WEEKDAY_LABELS = {
+    "en": {
+        "MON": "Mon", "TUE": "Tue", "WED": "Wed", "THU": "Thu",
+        "FRI": "Fri", "SAT": "Sat", "SUN": "Sun", "PH": "public holidays",
+    },
+    "zh": {
+        "MON": "一", "TUE": "二", "WED": "三", "THU": "四",
+        "FRI": "五", "SAT": "六", "SUN": "日", "PH": "公眾假期",
+    },
+}
+_FACILITY_LABELS = {
+    "en": {
+        "evCharger": "EV charger",
+        "disabilities": "Accessible parking",
+        "unloading": "Loading bay",
+        "washing": "Car wash",
+    },
+    "zh": {
+        "evCharger": "電動車充電",
+        "disabilities": "傷殘人士車位",
+        "unloading": "上落貨車位",
+        "washing": "洗車",
+    },
+}
+_PAYMENT_LABELS = {
+    "en": {
+        "cash": "Cash",
+        "octopus": "Octopus",
+        "visa": "Visa",
+        "mastercard": "Mastercard",
+        "eps": "EPS",
+        "unionpay": "UnionPay",
+        "alipay": "Alipay",
+        "wechatpay": "WeChat Pay",
+        "creditcard": "Credit card",
+    },
+    "zh": {
+        "cash": "現金",
+        "octopus": "八達通",
+        "visa": "Visa",
+        "mastercard": "Mastercard",
+        "eps": "易辦事",
+        "unionpay": "銀聯",
+        "alipay": "支付寶",
+        "wechatpay": "微信支付",
+        "creditcard": "信用卡",
+    },
+}
+_TYPE_LABELS = {
+    "en": {
+        "multi-storey": "Multi-storey",
+        "underground": "Underground",
+        "open-air": "Open-air",
+        "single-storey": "Single storey",
+    },
+    "zh": {
+        "multi-storey": "多層",
+        "underground": "地庫",
+        "open-air": "露天",
+        "single-storey": "單層",
+    },
+}
+_COVERED_LABELS = {
+    "en": {"covered": "Covered", "uncovered": "Open-air", "mixed": "Covered and open-air"},
+    "zh": {"covered": "有蓋", "uncovered": "露天", "mixed": "有蓋及露天"},
+}
+
+
+def slot_extra(carpark, vehicle_type, field):
+    """Read an extra vacancy count stored on the vehicle slot, if the feed has one."""
+    raw = carpark.get(vehicle_type)
+    slot = {}
+    if isinstance(raw, list) and raw:
+        slot = raw[0] or {}
+    elif isinstance(raw, dict):
+        slot = raw
+    value = slot.get(field)
+    if value is None:
+        value = carpark.get("{}_{}".format(vehicle_type, field))
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    if number < 0:
+        return None
+    return number
+
+
+def _lookup_label(table, lang, key):
+    text = str(key or "").strip()
+    if not text:
+        return ""
+    return table.get(lang, {}).get(text) or table.get(lang, {}).get(text.lower()) or text
+
+
+def _weekday_text(weekdays, lang):
+    days = [day for day in _WEEKDAY_ORDER if day in (weekdays or [])]
+    if not days:
+        return ""
+    everyday = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"}
+    if everyday.issubset(set(days)):
+        text = "Every day" if lang == "en" else "每日"
+        if "PH" in days:
+            text += " and public holidays" if lang == "en" else "及公眾假期"
+        return text
+    labels = [_WEEKDAY_LABELS[lang].get(day, day) for day in days]
+    if lang == "zh":
+        named = [label for label in labels if label != "公眾假期"]
+        text = "星期" + "、".join(named) if named else ""
+        if "公眾假期" in labels:
+            text = (text + "、公眾假期") if text else "公眾假期"
+        return text
+    return ", ".join(labels)
+
+
+def _period_text(item, lang):
+    start = item.get("periodStart") or ""
+    end = item.get("periodEnd") or ""
+    days = _weekday_text(item.get("weekdays"), lang)
+    if start and end:
+        hours = "{}–{}".format(start, end)
+    else:
+        hours = start or end
+    pieces = [piece for piece in (days, hours) if piece]
+    if item.get("excludePublicHoliday"):
+        pieces.append("except public holidays" if lang == "en" else "公眾假期除外")
+    return ", ".join(pieces)
+
+
+def _height_text(carpark):
+    lines = []
+    for limit in carpark.get("heightLimits") or []:
+        if not isinstance(limit, dict):
+            continue
+        height = limit.get("height")
+        remark = " ".join(str(limit.get("remark") or "").split())
+        text = "{} m".format(height) if height not in (None, "") else ""
+        if remark and remark.lower() not in text.lower():
+            text = "{} ({})".format(text, remark) if text else remark
+        if text and text not in lines:
+            lines.append(text)
+    return " · ".join(lines)
+
+
+def _charge_rows(records, lang, unit_en, unit_zh):
+    rows = []
+    for record in records or []:
+        if not isinstance(record, dict):
+            continue
+        price = record.get("price")
+        if price in (None, "", "N/A"):
+            continue
+        meta_parts = [
+            _period_text(record, lang),
+            _lookup_label(_COVERED_LABELS, lang, record.get("covered")),
+        ]
+        reserved = record.get("reserved")
+        if reserved == "reserved":
+            meta_parts.append("Reserved" if lang == "en" else "預留")
+        elif reserved == "non-reserved":
+            meta_parts.append("Non-reserved" if lang == "en" else "不預留")
+        remark = " ".join(str(record.get("remark") or "").split())
+        if remark:
+            meta_parts.append(remark)
+        unit = unit_en if lang == "en" else unit_zh
+        rows.append({
+            "value": "HK${} {}".format(price, unit).strip(),
+            "meta": " · ".join(part for part in meta_parts if part),
+        })
+    return rows
+
+
+def carpark_profile(carpark, lang="en"):
+    """Readable facts, charges, and offers for the detail page."""
+    zh = lang == "zh"
+    facts = []
+
+    district = carpark.get("district_tc") if zh else carpark.get("district")
+    if district:
+        facts.append({"label": "地區" if zh else "District", "value": district})
+
+    park_type = _lookup_label(_TYPE_LABELS, lang, carpark.get("carpark_Type"))
+    if park_type:
+        facts.append({"label": "類型" if zh else "Type", "value": park_type})
+
+    height = _height_text(carpark)
+    if height:
+        facts.append({"label": "高度限制" if zh else "Height limit", "value": height})
+
+    hour_lines = []
+    for item in carpark.get("openingHours") or []:
+        if isinstance(item, dict):
+            line = _period_text(item, lang)
+            if line:
+                hour_lines.append(line)
+    if hour_lines:
+        facts.append({
+            "label": "開放時間" if zh else "Opening hours",
+            "value": " · ".join(hour_lines),
+        })
+
+    payments = [
+        _lookup_label(_PAYMENT_LABELS, lang, method)
+        for method in (carpark.get("paymentMethods") or [])
+    ]
+    payments = [method for method in payments if method]
+    if payments:
+        facts.append({
+            "label": "付款方式" if zh else "Payment",
+            "value": "、".join(payments) if zh else ", ".join(payments),
+        })
+
+    facilities = [
+        _lookup_label(_FACILITY_LABELS, lang, facility)
+        for facility in (carpark.get("facilities") or [])
+    ]
+    facilities = [facility for facility in facilities if facility]
+    if facilities:
+        facts.append({
+            "label": "設施" if zh else "Facilities",
+            "value": "、".join(facilities) if zh else ", ".join(facilities),
+        })
+
+    space_fields = (
+        ("space", "私家車車位" if zh else "Private car spaces", "privateCar"),
+        ("spaceEV", "電動車充電車位" if zh else "EV charger spaces", "privateCar"),
+        ("spaceDIS", "傷殘人士車位" if zh else "Accessible spaces", "privateCar"),
+        ("spaceUNL", "上落貨車位" if zh else "Loading spaces", "privateCar"),
     )
-    carparks = list(info_payload.get("car_park") or [])
-    _apply_vacancy(carparks, vacancy_payload, "park_id")
-    return carparks
+    private_car = carpark.get("privateCar") if isinstance(carpark.get("privateCar"), dict) else {}
+    for field, label, _vehicle in space_fields:
+        value = private_car.get(field)
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            facts.append({"label": label, "value": str(number)})
+
+    charges = []
+    charges.extend(_charge_rows(
+        private_car.get("hourlyCharges"), lang, "/ hour", "/ 小時",
+    ))
+    for row in _charge_rows(private_car.get("monthlyCharges"), lang, "/ month", "/ 月"):
+        row["value"] = ("月租 " if zh else "Monthly ") + row["value"]
+        charges.append(row)
+
+    offers = []
+    for privilege in private_car.get("privileges") or []:
+        if not isinstance(privilege, dict):
+            continue
+        description = " ".join(str(privilege.get("description") or "").split())
+        when = _period_text(privilege, lang)
+        if description and when:
+            offers.append("{} ({})".format(description, when))
+        elif description:
+            offers.append(description)
+
+    return {"facts": facts, "charges": charges, "offers": offers}
