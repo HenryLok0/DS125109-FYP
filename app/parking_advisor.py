@@ -219,13 +219,14 @@ def _score(carpark, message, region_districts):
     return score
 
 
-def answer_parking_question(message, carparks):
-    """Build a direct answer from car-park records. Vacancy figures are for now only."""
+def _select_matches(message, carparks, limit=5):
+    """Rank live records against the question. Returns the shortlist and the parsed intent."""
     chinese = _is_chinese(message)
     vehicles = _requested_vehicles(message)
     tomorrow = _asks_tomorrow(message)
     region_districts = _region_districts(message)
     wants_spaces = _wants_spaces_now(message)
+
     def usable_spaces(carpark):
         total = 0
         for key, _zh_label, _en_label in vehicles:
@@ -238,35 +239,33 @@ def answer_parking_question(message, carparks):
         return total
 
     ranked = sorted(
-        (( _score(carpark, message, region_districts), usable_spaces(carpark), carpark) for carpark in carparks),
+        ((_score(carpark, message, region_districts), usable_spaces(carpark), carpark) for carpark in carparks),
         key=lambda item: (item[0], item[1]),
         reverse=True,
     )
     matches = []
-    for score, spaces, carpark in ranked:
+    for score, _spaces, carpark in ranked:
         if score <= 0:
             continue
         if wants_spaces and not _passes_listing(carpark, vehicles):
             continue
         matches.append(carpark)
-        if len(matches) == 5:
+        if len(matches) == limit:
             break
+    return {
+        "chinese": chinese,
+        "vehicles": vehicles,
+        "tomorrow": tomorrow,
+        "wants_spaces": wants_spaces,
+        "ranked": ranked,
+        "matches": matches,
+    }
 
-    if not matches:
-        if wants_spaces and any(item[0] > 0 for item in ranked):
-            if chinese:
-                return "這個範圍沒有營業中、而且所選車種有位的停車場。"
-            return "Nothing in that area is open with a space for the vehicle you asked about."
-        if chinese:
-            return (
-                "我未對到這個地方。請講地區或停車場名，例如「中環」、「尖沙咀」或「環球大廈」。\n"
-                "可以一併講車種（私家車、電單車）同埋係今日定聽日。"
-            )
-        return (
-            "I could not match that place. Name a district or car park, for example Central or Tsim Sha Tsui.\n"
-            "You can also say the vehicle type and whether you mean today or tomorrow."
-        )
 
+def _format_reply(picked, matches):
+    chinese = picked["chinese"]
+    vehicles = picked["vehicles"]
+    tomorrow = picked["tomorrow"]
     lines = []
     if chinese:
         lines.append("以下是而家的即時空位")
@@ -279,6 +278,15 @@ def answer_parking_question(message, carparks):
         address = _address(carpark, chinese)
         if address:
             lines.append(address)
+        hourly = _hourly_note(carpark)
+        height = _height_note(carpark)
+        if hourly or height:
+            extras = []
+            if hourly:
+                extras.append(("時租 " if chinese else "Hourly ") + hourly)
+            if height:
+                extras.append(("高度 " if chinese else "Height ") + height)
+            lines.append(" · ".join(extras))
         for key, zh_label, en_label in vehicles:
             vacancy = _format_vacancy(carpark.get(key + "_vacancy"), chinese)
             label = zh_label if chinese else en_label
@@ -301,5 +309,156 @@ def answer_parking_question(message, carparks):
     elif len(vehicles) > 1:
         lines.append("")
         lines.append("A car and a motorcycle need separate spaces. Pick a site that shows vacancies for both.")
-
     return "\n".join(lines)
+
+
+def answer_parking_question(message, carparks):
+    """Build a direct answer from car-park records. Vacancy figures are for now only."""
+    picked = _select_matches(message, carparks)
+    chinese = picked["chinese"]
+    wants_spaces = picked["wants_spaces"]
+    matches = picked["matches"]
+    ranked = picked["ranked"]
+
+    if not matches:
+        if wants_spaces and any(item[0] > 0 for item in ranked):
+            if chinese:
+                return "這個範圍沒有營業中、而且所選車種有位的停車場。"
+            return "Nothing in that area is open with a space for the vehicle you asked about."
+        if chinese:
+            return (
+                "我未對到這個地方。請講地區或停車場名，例如「中環」、「尖沙咀」或「環球大廈」。\n"
+                "可以一併講車種（私家車、電單車）同埋係今日定聽日。"
+            )
+        return (
+            "I could not match that place. Name a district or car park, for example Central or Tsim Sha Tsui.\n"
+            "You can also say the vehicle type and whether you mean today or tomorrow."
+        )
+    return _format_reply(picked, matches)
+
+
+def _park_key(carpark):
+    return str(carpark.get("park_id") or carpark.get("park_Id") or "")
+
+
+def _height_note(carpark):
+    lines = []
+    for limit in carpark.get("heightLimits") or []:
+        if not isinstance(limit, dict):
+            continue
+        height = limit.get("height")
+        if height in (None, ""):
+            continue
+        text = "{} m".format(height)
+        if text not in lines:
+            lines.append(text)
+    return " · ".join(lines)
+
+
+def _hourly_note(carpark):
+    private_car = carpark.get("privateCar") if isinstance(carpark.get("privateCar"), dict) else {}
+    for record in private_car.get("hourlyCharges") or []:
+        if not isinstance(record, dict):
+            continue
+        price = record.get("price")
+        if price in (None, "", "N/A"):
+            continue
+        return "HK${}".format(price)
+    price = carpark.get("price")
+    if price in (None, "", "N/A"):
+        return ""
+    return "HK${}".format(price)
+
+
+def _fact_sheet(matches, vehicles, typical, focus_id):
+    """Compact records for Gemini. Only published fields are included."""
+    blocks = []
+    if focus_id:
+        blocks.append("The visitor is viewing park_id {}.".format(focus_id))
+    for carpark in matches:
+        park_id = _park_key(carpark)
+        lines = [
+            "park_id: {}".format(park_id),
+            "name: {}".format(carpark.get("name") or ""),
+            "name_tc: {}".format(carpark.get("name_tc") or ""),
+            "address: {}".format(carpark.get("displayAddress") or ""),
+            "address_tc: {}".format(carpark.get("displayAddress_tc") or ""),
+            "district: {}".format(carpark.get("district") or ""),
+            "status: {}".format(carpark.get("opening_status") or ""),
+            "operator: {}".format(carpark.get("operator_label") or ""),
+            "live_vacancy: {}".format("yes" if carpark.get("has_live_vacancy") else "no"),
+        ]
+        for key, zh_label, en_label in vehicles:
+            lines.append("{} vacancy now: {}".format(en_label, _format_vacancy(carpark.get(key + "_vacancy"), False)))
+        hourly = _hourly_note(carpark)
+        if hourly:
+            lines.append("hourly price: {}".format(hourly))
+        height = _height_note(carpark)
+        if height:
+            lines.append("height limit: {}".format(height))
+        history = (typical or {}).get(park_id) or {}
+        if history.get("private_car") is not None:
+            lines.append("typical private cars this weekday and hour: {} ({} samples)".format(
+                history["private_car"], history.get("samples") or 0,
+            ))
+        if history.get("motorcycle") is not None:
+            lines.append("typical motorcycles this weekday and hour: {} ({} samples)".format(
+                history["motorcycle"], history.get("samples") or 0,
+            ))
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def _ask_gemini(client, model, message, facts):
+    from google.genai import types
+
+    prompt = (
+        "You are EaseParkHK, a Hong Kong parking assistant.\n"
+        "Reply in the visitor's language. Use Traditional Chinese when the question is Chinese.\n"
+        "Use only the records below. Never invent vacancy counts, prices, heights, or hours.\n"
+        "If a value is missing, say it is not published.\n"
+        "Vacancy figures are live for now, not a forecast. If they ask about tomorrow, say there is no official forecast.\n"
+        "Mention at most 5 car parks and stay under 160 words.\n\n"
+        "Question:\n{message}\n\n"
+        "Records:\n{facts}\n"
+    ).format(message=(message or "")[:500], facts=(facts or "")[:6000])
+    response = client.models.generate_content(
+        model=model or "gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=400,
+        ),
+    )
+    try:
+        text = (response.text or "").strip()
+    except Exception:
+        text = ""
+    return text[:1500]
+
+
+def advise(message, carparks, gemini_client=None, model="gemini-2.5-flash", typical=None, focus_id=""):
+    """Mix live records with Gemini. Without a client, return the record answer only."""
+    picked = _select_matches(message, carparks)
+    matches = list(picked["matches"])
+    focus_id = str(focus_id or "")
+    if focus_id:
+        focused = next((item for item in carparks if _park_key(item) == focus_id), None)
+        if focused is not None:
+            matches = [focused] + [item for item in matches if _park_key(item) != focus_id]
+            matches = matches[:5]
+
+    if not matches:
+        return answer_parking_question(message, carparks), "records"
+    if gemini_client is None:
+        return _format_reply(picked, matches), "records"
+
+    facts = _fact_sheet(matches, picked["vehicles"], typical, focus_id)
+    try:
+        text = _ask_gemini(gemini_client, model, message, facts)
+    except Exception:
+        text = ""
+    if not text:
+        return _format_reply(picked, matches), "records"
+    return text, "gemini"
+

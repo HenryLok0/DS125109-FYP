@@ -7,19 +7,9 @@
 </div>
 <script>
     (function () {
-        const API_URL = "https://api.data.gov.hk/v1/carpark-info-vacancy";
+        const API_URL = "{{ url_for('carpark_suggest') }}";
         let cachedData = [];
-
-        async function fetchData() {
-            try {
-                const response = await fetch(API_URL);
-                if (!response.ok) return;
-                const data = await response.json();
-                cachedData = data.results || [];
-            } catch (error) {
-                console.error("Error fetching search suggestions:", error);
-            }
-        }
+        let lastQuery = "";
 
         window.showSuggestions = function () {
             const inputEl = document.getElementById("searchInput");
@@ -27,20 +17,35 @@
             if (!inputEl || !suggestions) return;
             const input = inputEl.value.trim().toLowerCase();
             suggestions.innerHTML = "";
-            if (input.length === 0 || cachedData.length === 0) {
+            if (input.length === 0) {
                 suggestions.style.display = "none";
                 return;
             }
-            const filteredData = cachedData
-                .filter(item => (item.name || "").toLowerCase().includes(input))
-                .slice(0, 5);
-            if (filteredData.length === 0) {
+            if (input === lastQuery && cachedData.length) {
+                renderSuggestions(inputEl, suggestions, cachedData);
+                return;
+            }
+            lastQuery = input;
+            fetch(API_URL + "?q=" + encodeURIComponent(input) + "&lang=en")
+                .then(function (response) { return response.ok ? response.json() : []; })
+                .then(function (data) {
+                    cachedData = data || [];
+                    renderSuggestions(inputEl, suggestions, cachedData);
+                })
+                .catch(function () {
+                    suggestions.style.display = "none";
+                });
+        };
+
+        function renderSuggestions(inputEl, suggestions, data) {
+            suggestions.innerHTML = "";
+            if (!data.length) {
                 suggestions.style.display = "none";
                 return;
             }
-            filteredData.forEach(item => {
+            data.forEach(function (item) {
                 const div = document.createElement("div");
-                div.textContent = item.name + " - " + (item.displayAddress || "");
+                div.textContent = item.name + " - " + (item.address || "");
                 div.onclick = function () {
                     inputEl.value = item.name;
                     suggestions.style.display = "none";
@@ -48,9 +53,8 @@
                 suggestions.appendChild(div);
             });
             suggestions.style.display = "block";
-        };
+        }
 
-        fetchData();
         document.addEventListener("click", function (event) {
             const suggestions = document.getElementById("suggestions");
             if (suggestions && event.target !== document.getElementById("searchInput")) {

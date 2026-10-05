@@ -5,7 +5,7 @@
     {{ super() }}
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.svg') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v=7">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v=9">
     <script>
         (function () {
             try {
@@ -63,7 +63,11 @@
     </main>
     <footer class="site-footer">
         <div class="container">
-            EaseParkHK · Live Hong Kong car park vacancy ·
+            EaseParkHK · Live Hong Kong car park vacancy
+            {% if coverage %}
+                · Coverage {{ coverage.percent }}%
+            {% endif %}
+            ·
             <a href="/privacy_policy">Privacy Policy</a>
         </div>
     </footer>
@@ -74,6 +78,7 @@
     {{ super() }}
     {{ moment.include_moment() }}
     {{ moment.lang(g.locale) }}
+    <script src="{{ url_for('static', filename='js/carpark-list.js') }}?v=2"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const body = document.body;
