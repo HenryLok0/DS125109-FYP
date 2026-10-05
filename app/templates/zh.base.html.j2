@@ -6,7 +6,7 @@
     {{ super() }}
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.svg') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v=5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}?v=7">
     <script>
         (function () {
             try {
@@ -64,7 +64,11 @@
     </main>
     <footer class="site-footer">
         <div class="container">
-            泊易香港 · 香港停車場即時空位 ·
+            泊易香港 · 香港停車場即時空位
+            {% if coverage %}
+                · 全港覆蓋率 {{ coverage.percent }}%
+            {% endif %}
+            ·
             <a href="/privacy_policy">私隱政策</a>
         </div>
     </footer>
@@ -75,6 +79,7 @@
     {{ super() }}
     {{ moment.include_moment() }}
     {{ moment.lang(g.locale) }}
+    <script src="{{ url_for('static', filename='js/carpark-list.js') }}?v=2"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const body = document.body;

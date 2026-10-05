@@ -7,8 +7,10 @@
         <div class="page-header-lite">
             <p class="page-kicker">Live vacancy</p>
             <h1>Car Park Information</h1>
-            <p class="page-lead">Filter by vehicle type and opening status, then open a car park for the map and details.</p>
+            <p class="page-lead">Live vacancy includes Transport Department participating operators such as Wilson, Link, Sino and MTR. Use Private / mall, then Map only, to see extra commercial car parks from OpenStreetMap.</p>
         </div>
+        {% set coverage_lang = 'en' %}
+        {% include "_coverage_card.html.j2" %}
         <div class="filter-panel">
         <!-- Filter Options -->
         <div class="form-group">
@@ -29,6 +31,8 @@
                 <option value="CLOSED">Closed</option>
             </select>
         </div>
+        {% set filter_lang = 'en' %}
+        {% include "_carpark_extra_filters.html.j2" %}
         </div>
 
         {% if favorite_carparks %}
@@ -47,32 +51,11 @@
                 </tr>
             </thead>
             <tbody id="favorite-carpark-table">
-                {% for carpark in favorite_carparks %}
-                    {% for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach'] %}
-                        {% set vacancy = carpark[vehicle_type ~ '_vacancy'] %}
-                        {% if vacancy not in ['N/A', 'none', '-1', '0'] %}
-                            <tr data-vehicle-type="{{ vehicle_type }}" data-park-id="{{ carpark.park_Id }}">
-                                <td>{{ carpark.name }}</td>
-                                <td>{{ carpark.displayAddress }}</td>
-                                <td>{{ carpark.opening_status }}</td>
-                                <td>{{ vacancy }}</td>
-                                <td>
-                                    <a href="{{ url_for('carpark_detail', park_id=carpark.park_Id) }}" class="btn btn-info btn-sm">Details</a>
-                                </td>
-                                <td>
-                                    <button class="btn btn-primary btn-sm" onclick="showMap('{{ carpark.latitude }}', '{{ carpark.longitude }}', '{{ carpark.name }}', '{{ carpark.displayAddress }}', '{{ carpark.opening_status }}', '{{ vacancy }}', '{{ vehicle_type }}')">
-                                        Map
-                                    </button>
-                                </td>
-                                <td>
-                                    <button class="btn btn-warning btn-sm" onclick="toggleFavorite('{{ carpark.park_Id }}')">
-                                        Unfavorite
-                                    </button>
-                                </td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
-                {% endfor %}
+                {% set row_carparks = favorite_carparks %}
+                {% set list_lang = 'en' %}
+                {% set show_favorite = True %}
+                {% set favorite_mode = 'remove' %}
+                {% include "_carpark_rows.html.j2" %}
             </tbody>
         </table>
         </div>
@@ -93,32 +76,11 @@
                 </tr>
             </thead>
             <tbody id="carpark-table">
-                {% for carpark in carparks %}
-                    {% for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach'] %}
-                        {% set vacancy = carpark[vehicle_type ~ '_vacancy'] %}
-                        {% if vacancy not in ['N/A', 'none', '-1', '0'] %}
-                            <tr data-vehicle-type="{{ vehicle_type }}" data-park-id="{{ carpark.park_Id }}">
-                                <td>{{ carpark.name }}</td>
-                                <td>{{ carpark.displayAddress }}</td>
-                                <td>{{ carpark.opening_status }}</td>
-                                <td>{{ vacancy }}</td>
-                                <td>
-                                    <a href="{{ url_for('carpark_detail', park_id=carpark.park_Id) }}" class="btn btn-info btn-sm">Details</a>
-                                </td>
-                                <td>
-                                    <button class="btn btn-primary btn-sm" onclick="showMap('{{ carpark.latitude }}', '{{ carpark.longitude }}', '{{ carpark.name }}', '{{ carpark.displayAddress }}', '{{ carpark.opening_status }}', '{{ vacancy }}', '{{ vehicle_type }}')">
-                                        Map
-                                    </button>
-                                </td>
-                                <td>
-                                    <button class="btn btn-warning btn-sm" onclick="toggleFavorite('{{ carpark.park_Id }}')">
-                                        {{ 'Unfavorite' if carpark.park_Id in favorite_carparks else 'Favorite' }}
-                                    </button>
-                                </td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
-                {% endfor %}
+                {% set row_carparks = carparks %}
+                {% set list_lang = 'en' %}
+                {% set show_favorite = True %}
+                {% set favorite_mode = 'add' %}
+                {% include "_carpark_rows.html.j2" %}
             </tbody>
         </table>
         </div>

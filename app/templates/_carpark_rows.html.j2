@@ -1,0 +1,84 @@
+{% set _hidden = ['N/A', 'none', '-1', '0', 0, None, ''] %}
+{% for carpark in row_carparks %}
+    {% set pid = carpark.park_Id or carpark.park_id %}
+    {% set cname = carpark.name if list_lang == 'en' else (carpark.name_tc or carpark.name) %}
+    {% set caddr = carpark.displayAddress if list_lang == 'en' else (carpark.displayAddress_tc or carpark.displayAddress) %}
+    {% set cstatus = carpark.opening_status if list_lang == 'en' else (carpark.opening_status | translate_status) %}
+    {% set olabel = carpark.operator_label if list_lang == 'en' else (carpark.operator_label_tc or carpark.operator_label) %}
+    {% set detail_endpoint = 'carpark_detail' if list_lang == 'en' else 'zh_carpark_detail' %}
+    {% set ns = namespace(shown=false) %}
+    {% for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach'] %}
+        {% set vacancy = carpark[vehicle_type ~ '_vacancy'] %}
+        {% if vacancy not in _hidden %}
+            {% set ns.shown = true %}
+            <tr data-vehicle-type="{{ vehicle_type }}"
+                data-park-id="{{ pid }}"
+                data-operator="{{ carpark.operator_kind or 'private' }}"
+                data-status="{{ carpark.opening_status }}"
+                data-live="{{ '1' if carpark.has_live_vacancy else '0' }}"
+                data-live-fallback="{{ '0' if carpark.has_live_vacancy else '1' }}">
+                <td>
+                    {{ cname }}
+                    <span class="park-badge park-badge-{{ carpark.operator_kind or 'private' }}">{{ olabel }}</span>
+                </td>
+                <td>{{ caddr }}</td>
+                <td>{{ cstatus }}</td>
+                <td data-vacancy-value>{{ vacancy }}</td>
+                <td>
+                    <a href="{{ url_for(detail_endpoint, park_id=pid) }}" class="btn btn-info btn-sm">{{ 'Details' if list_lang == 'en' else '詳情' }}</a>
+                </td>
+                <td>
+                    <button class="btn btn-primary btn-sm" type="button" onclick="showMap('{{ carpark.latitude }}', '{{ carpark.longitude }}', '{{ cname | replace("'", "\\'") }}', '{{ caddr | replace("'", "\\'") }}', '{{ cstatus | replace("'", "\\'") }}', '{{ vacancy }}', '{{ vehicle_type }}')">
+                        {{ 'Map' if list_lang == 'en' else '地圖' }}
+                    </button>
+                </td>
+                {% if show_favorite %}
+                <td>
+                    <button class="btn btn-warning btn-sm" type="button" onclick="toggleFavorite('{{ pid }}')">
+                        {% if favorite_mode == 'remove' %}
+                            {{ 'Unfavorite' if list_lang == 'en' else '取消收藏' }}
+                        {% else %}
+                            {{ 'Favorite' if list_lang == 'en' else '收藏' }}
+                        {% endif %}
+                    </button>
+                </td>
+                {% endif %}
+            </tr>
+        {% endif %}
+    {% endfor %}
+    {% if not ns.shown %}
+        <tr data-vehicle-type="privateCar"
+            data-park-id="{{ pid }}"
+            data-operator="{{ carpark.operator_kind or 'private' }}"
+            data-status="{{ carpark.opening_status }}"
+            data-live="{{ '1' if carpark.has_live_vacancy else '0' }}"
+            data-live-fallback="1">
+            <td>
+                {{ cname }}
+                <span class="park-badge park-badge-{{ carpark.operator_kind or 'private' }}">{{ olabel }}</span>
+            </td>
+            <td>{{ caddr }}</td>
+            <td>{{ cstatus }}</td>
+            <td data-vacancy-value>{{ '—' if list_lang == 'en' else '暫無即時' }}</td>
+            <td>
+                <a href="{{ url_for(detail_endpoint, park_id=pid) }}" class="btn btn-info btn-sm">{{ 'Details' if list_lang == 'en' else '詳情' }}</a>
+            </td>
+            <td>
+                <button class="btn btn-primary btn-sm" type="button" onclick="showMap('{{ carpark.latitude }}', '{{ carpark.longitude }}', '{{ cname | replace("'", "\\'") }}', '{{ caddr | replace("'", "\\'") }}', '{{ cstatus | replace("'", "\\'") }}', '{{ '—' if list_lang == 'en' else '暫無即時' }}', 'privateCar')">
+                    {{ 'Map' if list_lang == 'en' else '地圖' }}
+                </button>
+            </td>
+            {% if show_favorite %}
+            <td>
+                <button class="btn btn-warning btn-sm" type="button" onclick="toggleFavorite('{{ pid }}')">
+                    {% if favorite_mode == 'remove' %}
+                        {{ 'Unfavorite' if list_lang == 'en' else '取消收藏' }}
+                    {% else %}
+                        {{ 'Favorite' if list_lang == 'en' else '收藏' }}
+                    {% endif %}
+                </button>
+            </td>
+            {% endif %}
+        </tr>
+    {% endif %}
+{% endfor %}

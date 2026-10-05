@@ -7,8 +7,10 @@
         <div class="page-header-lite">
             <p class="page-kicker">即時空位</p>
             <h1>停車場資訊</h1>
-            <p class="page-lead">可依車輛類型與營業狀態篩選，再開啟詳情與地圖。</p>
+            <p class="page-lead">即時空位包含運輸署合作的私人營辦商（威信、領展、信和、港鐵等）。選「私人／商場」，再選「地圖位置」，可看到 OpenStreetMap 上額外的商場停車場。</p>
         </div>
+        {% set coverage_lang = 'zh' %}
+        {% include "_coverage_card.html.j2" %}
         <div class="filter-panel">
         <!-- 篩選選項 -->
         <div class="form-group mt-4">
@@ -27,10 +29,12 @@
             <label for="status-filter">營業狀態：</label>
             <select id="status-filter" class="form-control" onchange="filterCarParksByStatus()">
                 <option value="all">全部</option>
-                <option value="營業中">營業中</option>
-                <option value="未提供">未提供</option>
+                <option value="OPEN">營業中</option>
+                <option value="CLOSED">非營業</option>
             </select>
         </div>
+        {% set filter_lang = 'zh' %}
+        {% include "_carpark_extra_filters.html.j2" %}
         </div>
 
         {% if favorite_carparks %}
@@ -49,32 +53,11 @@
                 </tr>
             </thead>
             <tbody id="favorite-carpark-table">
-                {% for carpark in favorite_carparks %}
-                    {% for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach'] %}
-                        {% set vacancy = carpark[vehicle_type ~ '_vacancy'] %}
-                        {% if vacancy not in ['N/A', 'none', '-1', '0'] %}
-                            <tr data-vehicle-type="{{ vehicle_type }}" data-park-id="{{ carpark.park_id }}">
-                                <td>{{ carpark.name_tc }}</td>
-                                <td>{{ carpark.displayAddress_tc }}</td>
-                                <td>{{ carpark.opening_status | translate_status }}</td>
-                                <td>{{ vacancy }}</td>
-                                <td>
-                                    <a href="{{ url_for('zh_carpark_detail', park_id=carpark.park_id) }}" class="btn btn-info btn-sm">詳細</a>
-                                </td>
-                                <td>
-                                    <button class="btn btn-primary btn-sm" onclick="showMap('{{ carpark.latitude }}', '{{ carpark.longitude }}', '{{ carpark.name_tc }}', '{{ carpark.displayAddress_tc }}', '{{ carpark.opening_status | translate_status }}', '{{ vacancy }}', '{{ vehicle_type }}')">
-                                        地圖
-                                    </button>
-                                </td>
-                                <td>
-                                    <button class="btn btn-warning btn-sm" onclick="toggleFavorite('{{ carpark.park_id }}')">
-                                        取消收藏
-                                    </button>
-                                </td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
-                {% endfor %}
+                {% set row_carparks = favorite_carparks %}
+                {% set list_lang = 'zh' %}
+                {% set show_favorite = True %}
+                {% set favorite_mode = 'remove' %}
+                {% include "_carpark_rows.html.j2" %}
             </tbody>
         </table>
         </div>
@@ -95,32 +78,11 @@
                 </tr>
             </thead>
             <tbody id="carpark-table">
-                {% for carpark in carparks %}
-                    {% for vehicle_type in ['privateCar', 'motorCycle', 'LGV', 'HGV', 'coach'] %}
-                        {% set vacancy = carpark[vehicle_type ~ '_vacancy'] %}
-                        {% if vacancy not in ['N/A', 'none', '-1', '0'] %}
-                            <tr data-vehicle-type="{{ vehicle_type }}" data-park-id="{{ carpark.park_id }}">
-                                <td>{{ carpark.name_tc }}</td>
-                                <td>{{ carpark.displayAddress_tc }}</td>
-                                <td>{{ carpark.opening_status | translate_status }}</td>
-                                <td>{{ vacancy }}</td>
-                                <td>
-                                    <a href="{{ url_for('zh_carpark_detail', park_id=carpark.park_id) }}" class="btn btn-info btn-sm">詳細</a>
-                                </td>
-                                <td>
-                                    <button class="btn btn-primary btn-sm" onclick="showMap('{{ carpark.latitude }}', '{{ carpark.longitude }}', '{{ carpark.name_tc }}', '{{ carpark.displayAddress_tc }}', '{{ carpark.opening_status | translate_status }}', '{{ vacancy }}', '{{ vehicle_type }}')">
-                                        地圖
-                                    </button>
-                                </td>
-                                <td>
-                                    <button class="btn btn-warning btn-sm" onclick="toggleFavorite('{{ carpark.park_id }}')">
-                                        {{ '取消收藏' if carpark.park_id in favorite_carparks else '收藏' }}
-                                    </button>
-                                </td>
-                            </tr>
-                        {% endif %}
-                    {% endfor %}
-                {% endfor %}
+                {% set row_carparks = carparks %}
+                {% set list_lang = 'zh' %}
+                {% set show_favorite = True %}
+                {% set favorite_mode = 'add' %}
+                {% include "_carpark_rows.html.j2" %}
             </tbody>
         </table>
         </div>

@@ -24,6 +24,10 @@
                 {% endif %}
             </p>
             <p><strong>Status</strong> {{ carpark.opening_status }}</p>
+            <p><strong>Operator</strong> {{ carpark.operator_label or '—' }}</p>
+            {% if not carpark.has_live_vacancy %}
+            <p class="page-lead">This listing comes from OpenStreetMap. Live vacancy is not published for this car park.</p>
+            {% endif %}
             <a id="view-map-button" onclick="showMap('{{ carpark.latitude }}', '{{ carpark.longitude }}')">View on map</a>
         </div>
     </div>

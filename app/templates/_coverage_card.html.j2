@@ -1,0 +1,27 @@
+{% if coverage %}
+<section class="coverage-card" aria-label="{{ 'Hong Kong car park coverage' if coverage_lang == 'en' else '全港停車場覆蓋率' }}">
+    <div class="coverage-head">
+        <div>
+            <p class="coverage-kicker">{{ 'Hong Kong coverage' if coverage_lang == 'en' else '全港覆蓋率' }}</p>
+            <p class="coverage-copy">
+                {% if coverage_lang == 'en' %}
+                    This site has details for {{ '{:,}'.format(coverage.listed_count) }} of about {{ '{:,}'.format(coverage.total_count) }} mapped off-street car parks in Hong Kong.
+                {% else %}
+                    本站有 {{ '{:,}'.format(coverage.listed_count) }} 個停車場詳情，約為全港 {{ '{:,}'.format(coverage.total_count) }} 個已標示路外停車場。
+                {% endif %}
+            </p>
+        </div>
+        <p class="coverage-percent">{{ coverage.percent }}%</p>
+    </div>
+    <div class="coverage-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ coverage.percent_int }}">
+        <span style="width: {{ coverage.bar_width }}%;"></span>
+    </div>
+    <p class="coverage-meta">
+        {% if coverage_lang == 'en' %}
+            Live vacancy: {{ '{:,}'.format(coverage.live_count) }} parks ({{ coverage.live_percent }}%). Mapped total comes from OpenStreetMap parking lots plus Transport Department open data.
+        {% else %}
+            即時空位：{{ '{:,}'.format(coverage.live_count) }} 個（{{ coverage.live_percent }}%）。總數來自 OpenStreetMap 停車場加上運輸署開放數據。
+        {% endif %}
+    </p>
+</section>
+{% endif %}

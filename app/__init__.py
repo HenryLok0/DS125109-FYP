@@ -17,7 +17,6 @@ app = Flask(__name__, static_folder='static')
 app.config.from_object(Config)
 
 db = SQLAlchemy(app)
-app.extensions['sqlalchemy'] = {'db': db}
 migrate = Migrate(app, db)
 login = LoginManager()
 login.login_view = "login"
@@ -37,12 +36,10 @@ client = genai.Client(api_key=app.config.get("GEMINI_API_KEY"))
 
 app.logger.info('SQLAlchemy initialized')
 
-search = Search()
-try:
-    search.init_app(app)
-except AttributeError as e:
-    print(f"Error initializing search: {e}")
-
+# Pass db explicitly: Flask-SQLAlchemy 3 stores a dict in
+# app.extensions['sqlalchemy'], so flask_msearch cannot read .db from it.
+search = Search(db=db)
+search.init_app(app)
 app.logger.info('flask_msearch initialized')
 
 if not app.debug:
