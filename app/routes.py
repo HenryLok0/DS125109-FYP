@@ -324,13 +324,7 @@ def map_carparks():
 
 @app.route('/')
 def index():
-    carparks = _safe_en_carparks()
-
-    favorite_carparks = session.get('favorite_carparks', [])
-    favorite_carparks_data = [carpark for carpark in carparks if carpark.get('park_Id') in favorite_carparks]
-    other_carparks_data = [carpark for carpark in carparks if carpark.get('park_Id') not in favorite_carparks]
-
-    return render_template('index.html.j2', favorite_carparks=favorite_carparks_data, carparks=other_carparks_data)
+    return redirect('/map')
 
 @app.route('/toggle_favorite/<park_id>', methods=['POST'])
 def toggle_favorite(park_id):
@@ -350,6 +344,8 @@ def toggle_favorite(park_id):
 @app.route('/zh')
 @app.route('/zh<path:path>')
 def zh(path=''):
+    if path in ('', '/'):
+        return redirect('/zh/map')
     carparks = _safe_zh_carparks()
 
     favorite_carparks = session.get('favorite_carparks', [])
