@@ -28,6 +28,18 @@
     var camerasLoaded = false;
     var noticeDistrict = "";
 
+    var REGION_DISTRICTS = {
+        hk: ["Central & Western", "Wan Chai", "Eastern", "Southern"],
+        kln: ["Yau Tsim Mong", "Sham Shui Po", "Kowloon City", "Wong Tai Sin", "Kwun Tong"],
+        nt: ["Kwai Tsing", "Tsuen Wan", "Yuen Long", "Tuen Mun", "North", "Tai Po", "Sha Tin", "Sai Kung", "Islands"]
+    };
+    var params = new URLSearchParams(window.location.search);
+    var activeRegion = REGION_DISTRICTS[params.get("region") || ""] || [];
+    if (params.get("district") && districtSelect) districtSelect.value = params.get("district");
+    if (params.get("vehicle")) document.getElementById("vehicle-filter").value = params.get("vehicle");
+    if (params.get("open") === "1") document.getElementById("filter-open").checked = true;
+    if (params.get("space") === "1") document.getElementById("filter-space").checked = true;
+
     var map = L.map(document.getElementById("onestop-map")).setView([22.32, 114.17], 11);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 18,
@@ -76,9 +88,15 @@
         return document.getElementById("district-filter").value;
     }
 
+    function inPlace(district) {
+        var selected = selectedDistrict();
+        if (selected) return district === selected;
+        if (activeRegion.length) return activeRegion.indexOf(district) >= 0;
+        return true;
+    }
+
     function parkVisible(carpark) {
-        var district = selectedDistrict();
-        if (district && carpark.district_en !== district) return false;
+        if (!inPlace(carpark.district_en)) return false;
         var keys = [vehicleKey()];
         return parkApi.passesListing(
             carpark,
@@ -89,8 +107,13 @@
     }
 
     function pointVisible(item) {
-        var district = selectedDistrict();
-        return !district || item.district === district;
+        return inPlace(item.district);
+    }
+
+    function fitFilteredParks() {
+        if (!selectedDistrict() && !activeRegion.length) return;
+        var bounds = parkLayer.getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
     }
 
     function typicalLine(carpark) {
@@ -352,7 +375,9 @@
     });
 
     document.getElementById("district-filter").addEventListener("change", function () {
+        activeRegion = [];
         drawParks();
+        fitFilteredParks();
         if (metersLoaded) drawMeters();
         if (camerasLoaded) drawCameras();
         showNotices(selectedDistrict());
@@ -398,6 +423,22 @@
         });
     }
 
+    showNotices(selectedDistrict());
+    if (params.get("meters") === "1") {
+        document.getElementById("layer-meters").checked = true;
+        map.addLayer(meterLayer);
+        loadMeters().catch(function () {
+            document.getElementById("layer-meters").checked = false;
+        });
+    }
+    if (params.get("cameras") === "1") {
+        document.getElementById("layer-cameras").checked = true;
+        map.addLayer(cameraLayer);
+        loadCameras().catch(function () {
+            document.getElementById("layer-cameras").checked = false;
+        });
+    }
+
     parkApi.loadCarparks().then(function (records) {
         parks = records;
         return fetch(historyUrl).then(function (response) {
@@ -406,8 +447,9 @@
     }).then(function (payload) {
         history = payload || { hours: {} };
         drawParks();
-        showNotices("");
+        fitFilteredParks();
     }).catch(function () {
-        document.getElementById("notice-list").textContent = text("停車場資料暫時讀不到。", "Car park data could not be loaded.");
+        document.getElementById("filter-empty").hidden = false;
+        document.getElementById("filter-empty").textContent = text("停車場資料暫時讀不到。", "Car park data could not be loaded.");
     });
 })();
