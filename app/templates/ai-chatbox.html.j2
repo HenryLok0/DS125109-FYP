@@ -91,16 +91,28 @@
 </head>
 <body>
     <div class="chat-container">
-        <p class="chat-hint">講地區、車種，同埋今日或聽日。空位是政府即時數字。</p>
+        <p class="chat-hint">
+            {% if gemini_ready and chinese %}
+            Gemini 會用即時空位、收費同這個頁面的停車場整理答案，不會自估數字。
+            {% elif gemini_ready %}
+            Gemini answers from live vacancies, published fees, and the car park on this page. It does not invent numbers.
+            {% elif chinese %}
+            Gemini 未設定，而家直接用即時空位回答。在 .env 填 GEMINI_API_KEY 後重新啟動即可。
+            {% else %}
+            Gemini is not configured, so answers use live vacancies only. Set GEMINI_API_KEY in .env and restart.
+            {% endif %}
+        </p>
         <div class="chat-box" id="chat-box"></div>
         <div class="chat-input">
-            <input type="text" id="chat-input" placeholder="例如：中環今日私家車同電單車" autocomplete="off">
-            <button type="button" id="send-button" onclick="sendMessage()">傳送</button>
+            <input type="text" id="chat-input" placeholder="{% if chinese %}例如：中環今日私家車有位嗎{% else %}For example: private car spaces in Central{% endif %}" autocomplete="off">
+            <button type="button" id="send-button" onclick="sendMessage()">{% if chinese %}傳送{% else %}Send{% endif %}</button>
         </div>
     </div>
 
     <script src="/advisor.js"></script>
     <script>
+        window.EASEPARK_PARK_ID = {{ park_id|tojson }};
+        window.EASEPARK_LANG = {{ ('zh' if chinese else 'en')|tojson }};
         var STORAGE_KEY = 'easepark-chat-messages';
         try {
             var parentPath = window.parent.location.pathname || '';
@@ -143,6 +155,39 @@
             appendMessage(item.cssClass, item.label, item.text, false);
         });
 
+        function assistantLabel(source) {
+            var chinese = window.EASEPARK_LANG === 'zh';
+            if (source === 'gemini') {
+                return chinese ? '助手（Gemini）：' : 'Assistant (Gemini): ';
+            }
+            return chinese ? '助手：' : 'Assistant: ';
+        }
+
+        function emptyReply() {
+            return window.EASEPARK_LANG === 'zh' ? '暫時未能回答。' : 'No answer yet.';
+        }
+
+        function postToAdvisor(message) {
+            return fetch('/send_message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: message,
+                    park_id: window.EASEPARK_PARK_ID || ''
+                })
+            }).then(function (response) {
+                if (!response.ok) {
+                    throw new Error('server');
+                }
+                return response.json();
+            }).then(function (data) {
+                if (!data || !data.reply) {
+                    throw new Error('empty');
+                }
+                appendMessage('ai-message', assistantLabel(data.source), data.reply);
+            });
+        }
+
         function sendMessage() {
             const chatInput = document.getElementById('chat-input');
             const sendButton = document.getElementById('send-button');
@@ -151,16 +196,21 @@
                 return;
             }
 
-            appendMessage('user-message', '你：', message);
+            appendMessage('user-message', window.EASEPARK_LANG === 'zh' ? '你：' : 'You: ', message);
             chatInput.value = '';
             sendButton.disabled = true;
 
-            window.EasePark.answer(message)
-            .then(function (reply) {
-                appendMessage('ai-message', '助手：', reply || '暫時未能回答。');
-            })
+            postToAdvisor(message)
             .catch(function () {
-                appendMessage('ai-message', '助手：', '連線失敗，請再試一次。');
+                if (!(window.EasePark && window.EasePark.answer)) {
+                    appendMessage('ai-message', assistantLabel('records'), window.EASEPARK_LANG === 'zh' ? '連線失敗，請再試一次。' : 'Connection failed. Please try again.');
+                    return;
+                }
+                return window.EasePark.answer(message).then(function (reply) {
+                    appendMessage('ai-message', assistantLabel('records'), reply || emptyReply());
+                }).catch(function () {
+                    appendMessage('ai-message', assistantLabel('records'), window.EASEPARK_LANG === 'zh' ? '連線失敗，請再試一次。' : 'Connection failed. Please try again.');
+                });
             })
             .finally(function () {
                 sendButton.disabled = false;

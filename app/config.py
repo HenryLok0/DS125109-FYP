@@ -17,6 +17,7 @@ class Config(object):
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+    GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash"
     ADMINS = ['cywong@example.com']
     POSTS_PER_PAGE = 3
     LANGUAGES = ['en', 'es', 'zh']

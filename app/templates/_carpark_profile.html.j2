@@ -1,0 +1,38 @@
+{% if carpark.profile and carpark.profile.facts %}
+<section class="detail-block">
+    <h2>{{ 'Details' if detail_lang == 'en' else '詳細資料' }}</h2>
+    <dl class="detail-facts-grid">
+        {% for fact in carpark.profile.facts %}
+            <div>
+                <dt>{{ fact.label }}</dt>
+                <dd>{{ fact.value }}</dd>
+            </div>
+        {% endfor %}
+    </dl>
+</section>
+{% endif %}
+
+{% if carpark.profile and carpark.profile.charges %}
+<section class="detail-block">
+    <h2>{{ 'Charges' if detail_lang == 'en' else '收費' }}</h2>
+    <ul class="detail-charge-list">
+        {% for charge in carpark.profile.charges %}
+            <li>
+                <strong>{{ charge.value }}</strong>
+                {% if charge.meta %}<span>{{ charge.meta }}</span>{% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+{% if carpark.profile and carpark.profile.offers %}
+<section class="detail-block">
+    <h2>{{ 'Parking offers' if detail_lang == 'en' else '泊車優惠' }}</h2>
+    <ul class="detail-offer-list">
+        {% for offer in carpark.profile.offers %}
+            <li>{{ offer }}</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
