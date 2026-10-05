@@ -298,6 +298,68 @@ body.dark-mode .dropdown-menu > li > a:hover {
   margin: 0;
 }
 
+.coverage-card {
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  background: var(--ep-surface);
+  border: 1px solid var(--ep-line);
+  border-radius: var(--ep-radius);
+  box-shadow: var(--ep-shadow);
+}
+
+.coverage-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.coverage-kicker {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ep-muted);
+  margin: 0 0 6px;
+}
+
+.coverage-copy {
+  margin: 0;
+  color: var(--ep-text);
+  max-width: 42rem;
+}
+
+.coverage-percent {
+  margin: 0;
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ep-primary);
+  white-space: nowrap;
+}
+
+.coverage-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ep-line);
+  overflow: hidden;
+  margin: 12px 0 10px;
+}
+
+.coverage-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ep-primary);
+  border-radius: 999px;
+}
+
+.coverage-meta {
+  margin: 0;
+  color: var(--ep-muted);
+  font-size: 13px;
+}
+
 .filter-panel {
   display: flex;
   flex-wrap: wrap;
@@ -313,6 +375,40 @@ body.dark-mode .dropdown-menu > li > a:hover {
 .filter-panel .form-group {
   flex: 1 1 200px;
   margin: 0 !important;
+}
+
+.park-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.park-badge-government {
+  background: #e8f1ff;
+  color: #1d4f91;
+}
+
+.park-badge-private {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+html.dark-mode .park-badge-government,
+body.dark-mode .park-badge-government {
+  background: #1b3358;
+  color: #c5dcff;
+}
+
+html.dark-mode .park-badge-private,
+body.dark-mode .park-badge-private {
+  background: #3b2460;
+  color: #e9d5ff;
 }
 
 .filter-panel label,
@@ -932,6 +1028,14 @@ body > #chatbox-button ~ * #chatbox-button {
   .site-main { padding-top: 16px; }
 
   .filter-panel { padding: 12px; }
+
+  .coverage-head {
+    flex-direction: column;
+  }
+
+  .coverage-percent {
+    font-size: 36px;
+  }
 
   .profile-card,
   .detail-hero {

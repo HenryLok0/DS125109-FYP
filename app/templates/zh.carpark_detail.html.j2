@@ -17,13 +17,17 @@
             <p><strong>聯絡電話</strong> {{ carpark.contactNo or '—' }}</p>
             <p>
                 <strong>網站</strong>
-                {% if carpark.website_en %}
-                    <a href="{{ carpark.website_en }}" target="_blank" rel="noopener">{{ carpark.website_tc or carpark.website_en }}</a>
+                {% if carpark.website_en or carpark.website %}
+                    <a href="{{ carpark.website_en or carpark.website }}" target="_blank" rel="noopener">{{ carpark.website_tc or carpark.website_en or carpark.website }}</a>
                 {% else %}
                     —
                 {% endif %}
             </p>
-            <p><strong>營運狀態</strong> {{ carpark.opening_status }}</p>
+            <p><strong>營運狀態</strong> {{ carpark.opening_status | translate_status }}</p>
+            <p><strong>營辦商</strong> {{ carpark.operator_label_tc or carpark.operator_label or '—' }}</p>
+            {% if not carpark.has_live_vacancy %}
+            <p class="page-lead">此筆資料來自 OpenStreetMap，沒有即時空位。</p>
+            {% endif %}
             <a id="view-map-button" onclick="showMap('{{ carpark.latitude }}', '{{ carpark.longitude }}')">查看地圖</a>
         </div>
     </div>
