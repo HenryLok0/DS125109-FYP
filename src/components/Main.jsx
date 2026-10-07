@@ -33,6 +33,7 @@ function Main({ lang, filterDistricts, customTitle }) {
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState('');
   const [onlyWithSpace, setOnlyWithSpace] = useState(false);
+  const [browseAll, setBrowseAll] = useState(false);
   const [context, setContext] = useState({ weather: { alerts: [], severe: false }, speed: { valid: 0, slow: 0, jammed: 0, time: '' }, notices: [] });
 
   useEffect(() => {
@@ -109,6 +110,7 @@ function Main({ lang, filterDistricts, customTitle }) {
           for (const vt of VEHICLE_TYPES.map(v => v.value)) {
             result[`${vt}_vacancy`] = vacancy[vt]?.vacancy ?? -1;
             result[`${vt}_vacancy_type`] = vacancy[vt]?.vacancy_type ?? '';
+            result[`${vt}_lastupdate`] = vacancy[vt]?.lastupdate || '';
           }
           return result;
         });
@@ -145,6 +147,7 @@ function Main({ lang, filterDistricts, customTitle }) {
       }
       setOrigin(place);
       setOnlyWithSpace(true);
+      setBrowseAll(false);
     } catch (error) {
       setOrigin(null);
       setGeoError(lang === 'en' ? 'Address lookup failed. Try again.' : lang === 'tc' ? '地址查詢失敗，請再試一次。' : '地址查询失败，请再试一次。');
@@ -158,6 +161,32 @@ function Main({ lang, filterDistricts, customTitle }) {
     setAddressQuery('');
     setGeoError('');
     setOnlyWithSpace(false);
+  };
+
+  const useMyLocation = () => {
+    setGeoError('');
+    if (!navigator.geolocation) {
+      setGeoError(lang === 'en' ? 'This browser cannot read your location.' : '這個瀏覽器不能讀取位置。');
+      return;
+    }
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setOrigin({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          label: lang === 'en' ? 'Your current location' : lang === 'tc' ? '你的目前位置' : '你的目前位置',
+        });
+        setOnlyWithSpace(true);
+        setBrowseAll(false);
+        setGeoLoading(false);
+      },
+      () => {
+        setGeoError(lang === 'en' ? 'Location permission was denied. Type an address instead.' : lang === 'tc' ? '未能取得位置，請改為輸入地址。' : '未能取得位置，请改为输入地址。');
+        setGeoLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
   };
 
   const toggleFavorite = parkId => {
@@ -210,7 +239,7 @@ function Main({ lang, filterDistricts, customTitle }) {
   const favoriteCarparks = filterCarparks(annotated.filter(c => favorites.includes(c.park_Id)));
   const matchedCarparks = filterCarparks(annotated.filter(c => !favorites.includes(c.park_Id)));
   const otherCarparks = origin
-    ? [...matchedCarparks].sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9)).slice(0, 15)
+    ? [...matchedCarparks].sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9)).slice(0, 8)
     : matchedCarparks;
 
   const handleShowMap = carpark => {
@@ -219,10 +248,10 @@ function Main({ lang, filterDistricts, customTitle }) {
   };
 
   return (
-    <Container className="mt-5">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div className="text-center w-100">
-          <h1 style={{ fontWeight: 800, letterSpacing: 1, color: '#1a237e', fontSize: '2.2rem' }}>
+    <Container className="mt-3 driver-home">
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <div className="w-100">
+          <h1 style={{ fontWeight: 800, letterSpacing: 0, color: '#1a237e', fontSize: '1.7rem' }}>
             {customTitle
               ? customTitle
               : lang === 'en'
@@ -296,6 +325,9 @@ function Main({ lang, filterDistricts, customTitle }) {
                   ? (lang === 'en' ? 'Finding...' : '查詢中...')
                   : (lang === 'en' ? 'Find spaces' : lang === 'tc' ? '找有位的場' : '找有位的场')}
               </Button>
+              <Button variant="outline-primary" onClick={useMyLocation} disabled={geoLoading}>
+                {lang === 'en' ? 'My location' : lang === 'tc' ? '我的位置' : '我的位置'}
+              </Button>
               {origin && (
                 <Button variant="outline-secondary" onClick={clearAddress}>
                   {lang === 'en' ? 'Clear' : '清除'}
@@ -355,6 +387,21 @@ function Main({ lang, filterDistricts, customTitle }) {
         </div>
       ) : (
         <>
+          {!origin && !search && !browseAll && (
+            <div className="driver-prompt">
+              <p>
+                {lang === 'en'
+                  ? 'Type where you are going, or use your location. The list shows open car parks with a space, nearest first.'
+                  : lang === 'tc'
+                  ? '輸入目的地，或使用目前位置。結果只列營業中而且有位的場，由近到遠。'
+                  : '输入目的地，或使用目前位置。结果只列营业中而且有位的场，由近到远。'}
+              </p>
+              <Button variant="link" onClick={() => setBrowseAll(true)}>
+                {lang === 'en' ? 'Browse every car park' : lang === 'tc' ? '瀏覽全部停車場' : '浏览全部停车场'}
+              </Button>
+            </div>
+          )}
+
           {favoriteCarparks.length > 0 && (
             <>
               <h2 style={{ fontWeight: 700, color: '#ff9800', marginTop: 24 }}>
@@ -374,12 +421,24 @@ function Main({ lang, filterDistricts, customTitle }) {
             </>
           )}
 
+          {(origin || search || browseAll) && (
+            <>
           <h2 className="mt-4" style={{ fontWeight: 700, color: '#1976d2' }}>
             {origin
-              ? (lang === 'en' ? 'Nearest parks with a space' : lang === 'tc' ? '附近有位的場' : '附近有位的场')
+              ? (lang === 'en' ? 'Go to one of these' : lang === 'tc' ? '建議前往' : '建议前往')
               : (lang === 'en' ? 'All Parking Lots' : lang === 'tc' ? '所有停車場' : '所有停车场')}
             <Badge bg="info" style={{ marginLeft: 8 }}>{otherCarparks.length}</Badge>
           </h2>
+          {origin ? (
+            <DriverCards
+              carparks={otherCarparks}
+              vehicleType={vehicleType}
+              origin={origin}
+              onToggleFavorite={toggleFavorite}
+              favorites={favorites}
+              lang={lang}
+            />
+          ) : (
           <CarparkTable
             carparks={otherCarparks}
             vehicleType={vehicleType}
@@ -387,9 +446,12 @@ function Main({ lang, filterDistricts, customTitle }) {
             onToggleFavorite={toggleFavorite}
             favorites={favorites}
             lang={lang}
-            preferDistance={Boolean(origin)}
+            preferDistance={false}
           />
-          {favoriteCarparks.length + otherCarparks.length === 0 && (
+          )}
+            </>
+          )}
+          {(origin || search) && favoriteCarparks.length + otherCarparks.length === 0 && (
             <p className="text-center text-danger mt-4" style={{ fontWeight: 700 }}>
               {lang === 'en' ? 'No results found. Try adjusting your search or filters.' : lang === 'tc' ? '找不到結果，請嘗試調整搜尋或篩選條件。' : '未找到结果，请尝试调整搜索或筛选条件。'}
             </p>
@@ -430,6 +492,62 @@ function Main({ lang, filterDistricts, customTitle }) {
         </Modal.Body>
       </Modal>
     </Container>
+  );
+}
+
+function formatUpdated(value, lang) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleTimeString(lang === 'en' ? 'en-HK' : 'zh-HK', { hour: '2-digit', minute: '2-digit' });
+}
+
+function directionsUrl(origin, carpark) {
+  const destination = `${carpark.latitude},${carpark.longitude}`;
+  if (origin) {
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}&destination=${destination}&travelmode=driving`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${destination}`;
+}
+
+function DriverCards({ carparks, vehicleType, origin, onToggleFavorite, favorites, lang }) {
+  return (
+    <div className="driver-list">
+      {carparks.map((carpark, index) => {
+        const spaces = carpark[`${vehicleType}_vacancy`];
+        const updated = formatUpdated(carpark[`${vehicleType}_lastupdate`], lang);
+        const height = Number(carpark.height);
+        return (
+          <article key={carpark.park_Id} className="driver-card">
+            <div className={`driver-spaces ${spaces > 10 ? 'many' : 'few'}`}>
+              <strong>{spaces}</strong>
+              <span>{lang === 'en' ? 'spaces' : '空位'}</span>
+            </div>
+            <div className="driver-body">
+              <div className="driver-title">
+                <Link to={`/info/${carpark.park_Id}`}>{index + 1}. {carpark.name[lang]}</Link>
+                <button type="button" className="driver-star" onClick={() => onToggleFavorite(carpark.park_Id)} aria-label="favorite">
+                  {favorites.includes(carpark.park_Id) ? <FaStar color="#f5b400" /> : <FaRegStar />}
+                </button>
+              </div>
+              <p>{carpark.district[lang]} · {carpark.displayAddress[lang]}</p>
+              <p className="driver-meta">
+                {carpark.distanceKm != null && (
+                  <span>{carpark.distanceKm < 1 ? `${Math.round(carpark.distanceKm * 1000)} m` : `${carpark.distanceKm.toFixed(1)} km`}</span>
+                )}
+                <StatusBadge status={carpark.opening_status} lang={lang} />
+                {height > 0 && <span>{lang === 'en' ? `Height ${height} m` : `高度 ${height} m`}</span>}
+                {carpark.closure && <span className="driver-warn">{lang === 'en' ? 'Closure in this district' : lang === 'tc' ? '同區封路' : '同区封路'}</span>}
+                {updated && <span>{lang === 'en' ? `Updated ${updated}` : `更新 ${updated}`}</span>}
+              </p>
+              <a className="btn btn-primary btn-sm" href={directionsUrl(origin, carpark)} target="_blank" rel="noopener noreferrer">
+                {lang === 'en' ? 'Navigate' : lang === 'tc' ? '導航去這裡' : '导航去这里'}
+              </a>
+            </div>
+          </article>
+        );
+      })}
+    </div>
   );
 }
 
