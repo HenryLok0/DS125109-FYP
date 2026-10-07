@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "A demo project using React and React-Bootstrap for UI/UX template.",
   "main": "src/index.js",
-  "homepage": "https://HenryLok0.github.io/EaseParkHK/",
+  "homepage": "https://henrylok0.github.io/DS125109-FYP/",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
