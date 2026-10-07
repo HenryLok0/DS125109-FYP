@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Spinner, Button, Container, Row, Col, Card, ListGroup, Table } from 'react-bootstrap';
 import { Telephone, Globe, Map } from 'react-bootstrap-icons';
+import { loadParkingContext, noticeMatchesPark } from '../parkingContext';
 
 function CarparkDetail({ lang = 'en' }) {
   const { park_id } = useParams();
@@ -9,6 +10,7 @@ function CarparkDetail({ lang = 'en' }) {
   const [vacancy, setVacancy] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastFetched, setLastFetched] = useState(null);
+  const [situation, setSituation] = useState({ notices: [], weather: { alerts: [], severe: false }, speed: { valid: 0, jammed: 0, slow: 0, time: '' } });
 
   useEffect(() => {
     async function fetchDetail() {
@@ -37,6 +39,26 @@ function CarparkDetail({ lang = 'en' }) {
     fetchDetail();
   }, [park_id]);
 
+  useEffect(() => {
+    if (!info) return undefined;
+    let cancelled = false;
+    loadParkingContext().then((context) => {
+      if (cancelled) return;
+      const park = {
+        district_en: info.district_en,
+        district_tc: info.district_tc,
+        district_sc: info.district_sc,
+      };
+      setSituation({
+        ...context,
+        notices: context.notices.filter((notice) => noticeMatchesPark(notice, park)).slice(0, 3),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [info]);
+
   const translations = {
     en: {
       back: 'Back',
@@ -64,6 +86,9 @@ function CarparkDetail({ lang = 'en' }) {
       website: 'Website',
       openingStatus: 'Opening Status',
       dataLastUpdated: 'Data last updated at',
+      situation: 'Conditions for this car park',
+      noNotice: 'No road-closure or special-traffic notice names this district.',
+      majorRoads: 'Major roads',
     },
     tc: {
       back: '返回',
@@ -91,6 +116,9 @@ function CarparkDetail({ lang = 'en' }) {
       website: '網站',
       openingStatus: '開放狀態',
       dataLastUpdated: '資料最後更新於',
+      situation: '這個場的情況',
+      noNotice: '沒有通告提到這個地區的封路或特別交通安排。',
+      majorRoads: '主要道路',
     },
     sc: {
       back: '返回',
@@ -118,6 +146,9 @@ function CarparkDetail({ lang = 'en' }) {
       website: '网站',
       openingStatus: '开放状态',
       dataLastUpdated: '数据最后更新于',
+      situation: '这个场的情况',
+      noNotice: '没有通告提到这个地区的封路或特别交通安排。',
+      majorRoads: '主要道路',
     },
   };
 
@@ -258,6 +289,36 @@ function CarparkDetail({ lang = 'en' }) {
       {/* Vacancy */}
       <Row className="mt-4">
         <Col>
+          <Card className="mb-3">
+            <Card.Body>
+              <Card.Title>{translations[lang].situation}</Card.Title>
+              {situation.weather.alerts.length > 0 && (
+                <p>
+                  {situation.weather.alerts.map((alert) => `${alert.name}${alert.type ? `（${alert.type}）` : ''}`).join('、')}
+                  {situation.weather.severe ? (lang === 'en' ? ' Check the height limit before you leave.' : lang === 'tc' ? ' 出發前先看高度限制。' : ' 出发前先看高度限制。') : ''}
+                </p>
+              )}
+              {situation.speed.valid > 0 && (
+                <p>
+                  {translations[lang].majorRoads}
+                  {lang === 'en'
+                    ? `: ${situation.speed.jammed} segments under 25 km/h, ${situation.speed.slow} between 25 and 40 km/h.`
+                    : `：${situation.speed.jammed} 段低於 25 km/h，${situation.speed.slow} 段介乎 25 至 40 km/h。`}
+                </p>
+              )}
+              {situation.notices.length > 0 ? (
+                <ListGroup variant="flush">
+                  {situation.notices.map((notice) => (
+                    <ListGroup.Item key={notice.id}>
+                      {notice[`title_${lang}`] || notice.title_en}
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
+              ) : (
+                <p className="mb-0">{translations[lang].noNotice}</p>
+              )}
+            </Card.Body>
+          </Card>
           <Card>
             <Card.Body>
               <Card.Title>{translations[lang].vacancyInfo}</Card.Title>

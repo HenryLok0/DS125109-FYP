@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { Container, Table, Button, Form, Modal, Row, Col, Badge, InputGroup, Spinner, ListGroup } from 'react-bootstrap';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Container, Table, Button, Form, Modal, Row, Col, Badge, InputGroup, Spinner, ListGroup, Alert } from 'react-bootstrap';
 import { FaRegStar, FaStar, FaMapMarkerAlt, FaTimes } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import '../styles/main.css';
+import { distanceKm, geocodeAddress, loadParkingContext, noticeMatchesPark } from '../parkingContext';
 
 const VEHICLE_TYPES = [
   { value: 'P', label: { en: 'Private Car', tc: '私家車', sc: '私家车' } },
@@ -27,6 +28,12 @@ function Main({ lang, filterDistricts, customTitle }) {
   const [mapInfo, setMapInfo] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [addressQuery, setAddressQuery] = useState('');
+  const [origin, setOrigin] = useState(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState('');
+  const [onlyWithSpace, setOnlyWithSpace] = useState(false);
+  const [context, setContext] = useState({ weather: { alerts: [], severe: false }, speed: { valid: 0, slow: 0, jammed: 0, time: '' }, notices: [] });
 
   useEffect(() => {
     localStorage.setItem('selected_vehicle_type', vehicleType);
@@ -116,6 +123,43 @@ function Main({ lang, filterDistricts, customTitle }) {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    loadParkingContext().then((next) => {
+      if (!cancelled) setContext(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const findByAddress = async () => {
+    setGeoError('');
+    setGeoLoading(true);
+    try {
+      const place = await geocodeAddress(addressQuery);
+      if (!place) {
+        setOrigin(null);
+        setGeoError(lang === 'en' ? 'That address was not found.' : lang === 'tc' ? '找不到這個地址。' : '找不到这个地址。');
+        return;
+      }
+      setOrigin(place);
+      setOnlyWithSpace(true);
+    } catch (error) {
+      setOrigin(null);
+      setGeoError(lang === 'en' ? 'Address lookup failed. Try again.' : lang === 'tc' ? '地址查詢失敗，請再試一次。' : '地址查询失败，请再试一次。');
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
+  const clearAddress = () => {
+    setOrigin(null);
+    setAddressQuery('');
+    setGeoError('');
+    setOnlyWithSpace(false);
+  };
+
   const toggleFavorite = parkId => {
     let newFavs;
     if (favorites.includes(parkId)) {
@@ -127,9 +171,21 @@ function Main({ lang, filterDistricts, customTitle }) {
     localStorage.setItem('favorite_carparks', JSON.stringify(newFavs));
   };
 
-  // 加入地區過濾
+  const annotated = useMemo(() => carparks.map((carpark) => ({
+    ...carpark,
+    distanceKm: origin
+      ? distanceKm(origin.latitude, origin.longitude, carpark.latitude, carpark.longitude)
+      : null,
+    closure: context.notices.some((notice) => noticeMatchesPark(notice, carpark)),
+  })), [carparks, origin, context.notices]);
+
+  // District, name, vacancy, and optional distance from the user's address.
   const filterCarparks = list =>
     list.filter(carpark => {
+      if (onlyWithSpace) {
+        const spaces = carpark[`${vehicleType}_vacancy`];
+        if (carpark.opening_status !== 'OPEN' || !(spaces > 0)) return false;
+      }
       // 地區過濾
       if (filterDistricts && filterDistricts.length > 0) {
         // 支援多語言 district 過濾
@@ -151,8 +207,11 @@ function Main({ lang, filterDistricts, customTitle }) {
       return true;
     });
 
-  const favoriteCarparks = filterCarparks(carparks.filter(c => favorites.includes(c.park_Id)));
-  const otherCarparks = filterCarparks(carparks.filter(c => !favorites.includes(c.park_Id)));
+  const favoriteCarparks = filterCarparks(annotated.filter(c => favorites.includes(c.park_Id)));
+  const matchedCarparks = filterCarparks(annotated.filter(c => !favorites.includes(c.park_Id)));
+  const otherCarparks = origin
+    ? [...matchedCarparks].sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9)).slice(0, 15)
+    : matchedCarparks;
 
   const handleShowMap = carpark => {
     setMapInfo(carpark);
@@ -174,10 +233,10 @@ function Main({ lang, filterDistricts, customTitle }) {
           </h1>
           <p style={{ color: '#607d8b', fontSize: '1.15em', fontWeight: 500 }}>
             {lang === 'en'
-              ? 'Find real-time parking vacancy and info for all types of vehicles'
+              ? 'Enter your address to list open car parks that have a space, with district closures and weather.'
               : lang === 'tc'
-              ? '即時查詢各類車輛停車場空位及資訊'
-              : '实时查询各类车辆停车场空位及资讯'}
+              ? '輸入地址，列出營業中而且有位的場，並標示同區封路和天氣。'
+              : '输入地址，列出营业中而且有位的场，并标示同区封路和天气。'}
           </p>
         </div>
       </div>
@@ -216,6 +275,74 @@ function Main({ lang, filterDistricts, customTitle }) {
           </Form.Group>
         </Col>
       </Row>
+      <Row className="mb-3 align-items-end">
+        <Col md={8} xs={12} className="mb-2 mb-md-0">
+          <Form.Group>
+            <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
+              {lang === 'en' ? 'Your address' : lang === 'tc' ? '你的地址' : '你的地址'}
+            </Form.Label>
+            <InputGroup>
+              <Form.Control
+                type="text"
+                placeholder={lang === 'en' ? 'For example: Nathan Road, Tsim Sha Tsui' : lang === 'tc' ? '例如：尖沙咀彌敦道' : '例如：尖沙咀弥敦道'}
+                value={addressQuery}
+                onChange={e => setAddressQuery(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') findByAddress();
+                }}
+              />
+              <Button variant="primary" onClick={findByAddress} disabled={geoLoading || !addressQuery.trim()}>
+                {geoLoading
+                  ? (lang === 'en' ? 'Finding...' : '查詢中...')
+                  : (lang === 'en' ? 'Find spaces' : lang === 'tc' ? '找有位的場' : '找有位的场')}
+              </Button>
+              {origin && (
+                <Button variant="outline-secondary" onClick={clearAddress}>
+                  {lang === 'en' ? 'Clear' : '清除'}
+                </Button>
+              )}
+            </InputGroup>
+          </Form.Group>
+        </Col>
+        <Col md={4} xs={12}>
+          <Form.Check
+            type="checkbox"
+            id="only-with-space"
+            checked={onlyWithSpace}
+            onChange={e => setOnlyWithSpace(e.target.checked)}
+            label={lang === 'en' ? 'Only open parks with a space' : lang === 'tc' ? '只顯示營業中而且有位' : '只显示营业中而且有位'}
+          />
+        </Col>
+      </Row>
+      {geoError && <Alert variant="warning">{geoError}</Alert>}
+      {origin && (
+        <Alert variant="info">
+          {lang === 'en' ? 'Matched address: ' : lang === 'tc' ? '已對到地址：' : '已对到地址：'}
+          {origin.label}
+        </Alert>
+      )}
+      {context.weather.alerts.length > 0 && (
+        <Alert variant={context.weather.severe ? 'danger' : 'secondary'}>
+          {lang === 'en' ? 'Weather warning: ' : lang === 'tc' ? '天氣警告：' : '天气警告：'}
+          {context.weather.alerts.map((alert) => `${alert.name}${alert.type ? `（${alert.type}）` : ''}`).join('、')}
+          {context.weather.severe
+            ? (lang === 'en'
+              ? ' Rain or a typhoon signal is in force. Check the height limit before you drive.'
+              : lang === 'tc'
+              ? ' 現正有雨或風球。出發前先看高度限制。'
+              : ' 现正有雨或风球。出发前先看高度限制。')
+            : ''}
+        </Alert>
+      )}
+      {context.speed.valid > 0 && (
+        <Alert variant={context.speed.jammed > 0 ? 'warning' : 'light'}>
+          {lang === 'en'
+            ? `Major roads at ${context.speed.time || 'now'}: ${context.speed.jammed} segments under 25 km/h, ${context.speed.slow} between 25 and 40 km/h.`
+            : lang === 'tc'
+            ? `主要道路 ${context.speed.time || '現時'}：${context.speed.jammed} 段低於 25 km/h，${context.speed.slow} 段介乎 25 至 40 km/h。`
+            : `主要道路 ${context.speed.time || '现时'}：${context.speed.jammed} 段低于 25 km/h，${context.speed.slow} 段介于 25 至 40 km/h。`}
+        </Alert>
+      )}
 
       {loading ? (
         <div className="text-center my-5">
@@ -242,12 +369,15 @@ function Main({ lang, filterDistricts, customTitle }) {
                 onToggleFavorite={toggleFavorite}
                 favorites={favorites}
                 lang={lang}
+                preferDistance={Boolean(origin)}
               />
             </>
           )}
 
           <h2 className="mt-4" style={{ fontWeight: 700, color: '#1976d2' }}>
-            {lang === 'en' ? 'All Parking Lots' : lang === 'tc' ? '所有停車場' : '所有停车场'}
+            {origin
+              ? (lang === 'en' ? 'Nearest parks with a space' : lang === 'tc' ? '附近有位的場' : '附近有位的场')
+              : (lang === 'en' ? 'All Parking Lots' : lang === 'tc' ? '所有停車場' : '所有停车场')}
             <Badge bg="info" style={{ marginLeft: 8 }}>{otherCarparks.length}</Badge>
           </h2>
           <CarparkTable
@@ -257,6 +387,7 @@ function Main({ lang, filterDistricts, customTitle }) {
             onToggleFavorite={toggleFavorite}
             favorites={favorites}
             lang={lang}
+            preferDistance={Boolean(origin)}
           />
           {favoriteCarparks.length + otherCarparks.length === 0 && (
             <p className="text-center text-danger mt-4" style={{ fontWeight: 700 }}>
@@ -391,9 +522,36 @@ function VacancyBadge({ value, lang }) {
   );
 }
 
-function CarparkTable({ carparks, vehicleType, onShowMap, onToggleFavorite, favorites, lang }) {
-  const [sortColumn, setSortColumn] = useState('vacancy_ranking');
-  const [sortDirection, setSortDirection] = useState('desc');
+function ParkSignals({ carpark, lang }) {
+  if (carpark.distanceKm == null && !carpark.closure) return null;
+  return (
+    <div className="mt-1">
+      {carpark.distanceKm != null && (
+        <Badge bg="primary" className="me-1">
+          {carpark.distanceKm < 1
+            ? `${Math.round(carpark.distanceKm * 1000)} m`
+            : `${carpark.distanceKm.toFixed(1)} km`}
+        </Badge>
+      )}
+      {carpark.closure && (
+        <Badge bg="danger">
+          {lang === 'en' ? 'Closure in this district' : lang === 'tc' ? '同區封路' : '同区封路'}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
+function CarparkTable({ carparks, vehicleType, onShowMap, onToggleFavorite, favorites, lang, preferDistance }) {
+  const [sortColumn, setSortColumn] = useState(preferDistance ? 'distanceKm' : 'vacancy_ranking');
+  const [sortDirection, setSortDirection] = useState(preferDistance ? 'asc' : 'desc');
+
+  useEffect(() => {
+    if (preferDistance) {
+      setSortColumn('distanceKm');
+      setSortDirection('asc');
+    }
+  }, [preferDistance]);
 
   const handleSort = column => {
     let newDirection = 'asc';
@@ -418,6 +576,11 @@ function CarparkTable({ carparks, vehicleType, onShowMap, onToggleFavorite, favo
   });
 
   const sortedCarparks = [...carparksWithRanking].sort((a, b) => {
+    if (sortColumn === 'distanceKm') {
+      const left = a.distanceKm == null ? 1e9 : a.distanceKm;
+      const right = b.distanceKm == null ? 1e9 : b.distanceKm;
+      return sortDirection === 'asc' ? left - right : right - left;
+    }
     if (a.status_ranking !== b.status_ranking) {
       return a.status_ranking - b.status_ranking;
     }
@@ -463,6 +626,7 @@ function CarparkTable({ carparks, vehicleType, onShowMap, onToggleFavorite, favo
                   <Link to={`/info/${carpark.park_Id}`} style={{ fontWeight: 'bold', color: '#1976d2', textDecoration: 'underline' }}>
                     {carpark.name[lang]}
                   </Link>
+                  <ParkSignals carpark={carpark} lang={lang} />
                 </td>
                 <td>{carpark.district[lang]}</td>
                 <td>{carpark.displayAddress[lang]}</td>
@@ -503,6 +667,7 @@ function CarparkTable({ carparks, vehicleType, onShowMap, onToggleFavorite, favo
                   <div style={{ fontWeight: 'bold', color: '#1976d2', fontSize: '1.1em' }}>
                     {carpark.name[lang]}
                   </div>
+                  <ParkSignals carpark={carpark} lang={lang} />
                   <div style={{ color: '#607d8b', fontSize: '0.95em' }}>{carpark.district[lang]}</div>
                   <div style={{ color: '#555', fontSize: '0.95em' }}>{carpark.displayAddress[lang]}</div>
                   <div className="mt-1">
