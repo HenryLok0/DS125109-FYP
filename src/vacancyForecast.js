@@ -314,11 +314,12 @@ export function forecastFromSeries({
   current,
   storedPoints = [],
   nowMs = Date.now(),
+  withMetrics = true,
 }) {
   if (!current || !Number.isFinite(current.value)) {
     return { ok: false, reason: 'no-count' };
   }
-  const trained = values?.length ? evaluateForecasts(values) : null;
+  const trained = withMetrics && values?.length ? evaluateForecasts(values) : null;
   const model = trained?.model || (values?.length ? fitArima(values) : null);
   const publishedAge = current.timeMs ? Math.abs(nowMs - current.timeMs) : Infinity;
   const anchorTime = publishedAge < 30 * 60 * 1000 ? current.timeMs : nowMs;
@@ -386,7 +387,7 @@ export function loadVacancySeries() {
   return seriesCache;
 }
 
-export function forecastPark(bundle, parkId, current, nowMs = Date.now()) {
+export function forecastPark(bundle, parkId, current, nowMs = Date.now(), options = {}) {
   const encoded = bundle?.parks?.[parkId];
   const values = encoded ? encoded.v.map((value) => (value < 0 ? null : value)) : null;
   return forecastFromSeries({
@@ -396,5 +397,6 @@ export function forecastPark(bundle, parkId, current, nowMs = Date.now()) {
     current,
     storedPoints: readObservations(parkId),
     nowMs,
+    withMetrics: options.withMetrics !== false,
   });
 }

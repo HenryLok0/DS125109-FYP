@@ -244,6 +244,46 @@ function CarparkDetail({ lang = 'en' }) {
 
   return (
     <Container className="my-5">
+      <Row className="mb-4">
+        <Col>
+          <Card className="mb-3">
+            <Card.Body>
+              <Card.Title>{translations[lang].vacancyInfo}</Card.Title>
+              {vacancyLoading && !vacancy ? (
+                <Spinner animation="border" size="sm" />
+              ) : vacancy && vacancy.vehicle_type && vacancy.vehicle_type.length > 0 ? (
+                <Table striped bordered hover responsive>
+                  <thead>
+                    <tr>
+                      <th scope="col">{translations[lang].vehicleType}</th>
+                      <th scope="col">{translations[lang].serviceCategory}</th>
+                      <th scope="col">{translations[lang].vacancy}</th>
+                      <th scope="col">{translations[lang].lastUpdate}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vacancy.vehicle_type.map(vt =>
+                      vt.service_category.map(sc => (
+                        <tr key={`${vt.type}-${sc.category}`}>
+                          <td>{vehicleTypeMap[lang][vt.type] || vt.type}</td>
+                          <td>{categoryMap[lang][sc.category] || sc.category}</td>
+                          <td style={{ color: sc.vacancy > 0 ? 'green' : sc.vacancy === 0 ? 'red' : 'gray' }}>
+                            {sc.vacancy >= 0 ? sc.vacancy : 'N/A'}
+                          </td>
+                          <td>{new Date(sc.lastupdate).toLocaleString()}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </Table>
+              ) : (
+                <p>{translations[lang].noVacancy}</p>
+              )}
+            </Card.Body>
+          </Card>
+          <VacancyForecast parkId={park_id} vacancy={vacancy} lang={lang} refreshedAt={lastFetched} />
+        </Col>
+      </Row>
       {/* Google Map */}
       <Row className="mb-4">
         <Col>
@@ -302,7 +342,10 @@ function CarparkDetail({ lang = 'en' }) {
                   <strong>{translations[lang].district}</strong>: {info[`district_${lang}`] || info.district_en}
                 </ListGroup.Item>
                 <ListGroup.Item>
-                  <strong>{translations[lang].openingStatus}</strong>: {info.opening_status || 'N/A'}
+                  <strong>{translations[lang].openingStatus}</strong>: {{
+                    OPEN: { en: 'Open', tc: '開放', sc: '开放' },
+                    CLOSED: { en: 'Closed', tc: '關閉', sc: '关闭' },
+                  }[info.opening_status]?.[lang] || { en: 'Unknown', tc: '未知', sc: '未知' }[lang]}
                 </ListGroup.Item>
                 <ListGroup.Item>
                   <strong>{translations[lang].heightLimit}</strong>: {info.height ? `${info.height}m` : 'N/A'}
@@ -339,18 +382,10 @@ function CarparkDetail({ lang = 'en' }) {
           <Card className="mb-3">
             <Card.Body>
               <Card.Title>{translations[lang].situation}</Card.Title>
-              {situation.weather.alerts.length > 0 && (
+              {situation.weather.severe && (
                 <p>
                   {situation.weather.alerts.map((alert) => `${alert.name}${alert.type ? `（${alert.type}）` : ''}`).join('、')}
-                  {situation.weather.severe ? (lang === 'en' ? ' Check the height limit before you leave.' : lang === 'tc' ? ' 出發前先看高度限制。' : ' 出发前先看高度限制。') : ''}
-                </p>
-              )}
-              {situation.speed.valid > 0 && (
-                <p>
-                  {translations[lang].majorRoads}
-                  {lang === 'en'
-                    ? `: ${situation.speed.jammed} segments under 25 km/h, ${situation.speed.slow} between 25 and 40 km/h.`
-                    : `：${situation.speed.jammed} 段低於 25 km/h，${situation.speed.slow} 段介乎 25 至 40 km/h。`}
+                  {lang === 'en' ? ' Check the height limit before you leave.' : lang === 'tc' ? ' 出發前先看高度限制。' : ' 出发前先看高度限制。'}
                 </p>
               )}
               {situation.notices.length > 0 ? (
@@ -366,42 +401,6 @@ function CarparkDetail({ lang = 'en' }) {
               )}
             </Card.Body>
           </Card>
-          <Card className="mb-3">
-            <Card.Body>
-              <Card.Title>{translations[lang].vacancyInfo}</Card.Title>
-              {vacancyLoading && !vacancy ? (
-                <Spinner animation="border" size="sm" />
-              ) : vacancy && vacancy.vehicle_type && vacancy.vehicle_type.length > 0 ? (
-                <Table striped bordered hover responsive>
-                  <thead>
-                    <tr>
-                      <th scope="col">{translations[lang].vehicleType}</th>
-                      <th scope="col">{translations[lang].serviceCategory}</th>
-                      <th scope="col">{translations[lang].vacancy}</th>
-                      <th scope="col">{translations[lang].lastUpdate}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {vacancy.vehicle_type.map(vt =>
-                      vt.service_category.map(sc => (
-                        <tr key={`${vt.type}-${sc.category}`}>
-                          <td>{vehicleTypeMap[lang][vt.type] || vt.type}</td>
-                          <td>{categoryMap[lang][sc.category] || sc.category}</td>
-                          <td style={{ color: sc.vacancy > 0 ? 'green' : sc.vacancy === 0 ? 'red' : 'gray' }}>
-                            {sc.vacancy >= 0 ? sc.vacancy : 'N/A'}
-                          </td>
-                          <td>{new Date(sc.lastupdate).toLocaleString()}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </Table>
-              ) : (
-                <p>{translations[lang].noVacancy}</p>
-              )}
-            </Card.Body>
-          </Card>
-          <VacancyForecast parkId={park_id} vacancy={vacancy} lang={lang} refreshedAt={lastFetched} />
         </Col>
       </Row>
       <p className="text-muted mt-4">
