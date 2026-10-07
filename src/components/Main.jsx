@@ -4,6 +4,7 @@ import { FaRegStar, FaStar, FaMapMarkerAlt, FaTimes } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import '../styles/main.css';
 import { distanceKm, geocodeAddress, loadParkingContext, noticeMatchesPark } from '../parkingContext';
+import { forecastPark, loadVacancySeries, parseVacancyTime } from '../vacancyForecast';
 
 const VEHICLE_TYPES = [
   { value: 'P', label: { en: 'Private Car', tc: '私家車', sc: '私家车' } },
@@ -262,48 +263,13 @@ function Main({ lang, filterDistricts, customTitle }) {
           </h1>
           <p style={{ color: '#607d8b', fontSize: '1.15em', fontWeight: 500 }}>
             {lang === 'en'
-              ? 'Enter your address to list open car parks that have a space, with district closures and weather.'
+              ? 'Enter an address. Nearest open car parks with a space are listed, including about how many spaces are left in 30 minutes.'
               : lang === 'tc'
-              ? '輸入地址，列出營業中而且有位的場，並標示同區封路和天氣。'
-              : '输入地址，列出营业中而且有位的场，并标示同区封路和天气。'}
+              ? '輸入地址，列出最近、營業中而且有位的場，並顯示 30 分鐘後大約仲有幾多位。'
+              : '输入地址，列出最近、营业中而且有位的场，并显示 30 分钟后大约还有多少个位。'}
           </p>
         </div>
       </div>
-      <Row className="mb-3 align-items-end">
-        <Col md={4} xs={12} className="mb-2 mb-md-0">
-          <Form.Group>
-            <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
-              {lang === 'en' ? 'Vehicle Type:' : lang === 'tc' ? '車輛類型：' : '车辆类型：'}
-            </Form.Label>
-            <Form.Select value={vehicleType} onChange={e => setVehicleType(e.target.value)}>
-              {VEHICLE_TYPES.map(v => (
-                <option key={v.value} value={v.value}>{v.label[lang]}</option>
-              ))}
-            </Form.Select>
-          </Form.Group>
-        </Col>
-        <Col md={8} xs={12}>
-          <Form.Group>
-            <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
-              {lang === 'en' ? 'Search (Name or Address):' : lang === 'tc' ? '搜尋（名稱或地址）：' : '搜索（名称或地址）：'}
-            </Form.Label>
-            <InputGroup>
-              <Form.Control
-                type="text"
-                placeholder={lang === 'en' ? 'Enter name or address' : lang === 'tc' ? '輸入名稱或地址' : '输入名称或地址'}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                style={{ borderRight: 0, borderRadius: '0.375rem 0 0 0.375rem', fontWeight: 500 }}
-              />
-              {search && (
-                <Button variant="outline-secondary" onClick={() => setSearch('')} style={{ borderRadius: '0 0.375rem 0.375rem 0' }}>
-                  {lang === 'en' ? 'Clear' : lang === 'tc' ? '清除' : '清除'}
-                </Button>
-              )}
-            </InputGroup>
-          </Form.Group>
-        </Col>
-      </Row>
       <Row className="mb-3 align-items-end">
         <Col md={8} xs={12} className="mb-2 mb-md-0">
           <Form.Group>
@@ -346,6 +312,41 @@ function Main({ lang, filterDistricts, customTitle }) {
           />
         </Col>
       </Row>
+      <Row className="mb-3 align-items-end">
+        <Col md={4} xs={12} className="mb-2 mb-md-0">
+          <Form.Group>
+            <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
+              {lang === 'en' ? 'Vehicle Type:' : lang === 'tc' ? '車輛類型：' : '车辆类型：'}
+            </Form.Label>
+            <Form.Select value={vehicleType} onChange={e => setVehicleType(e.target.value)}>
+              {VEHICLE_TYPES.map(v => (
+                <option key={v.value} value={v.value}>{v.label[lang]}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+        </Col>
+        <Col md={8} xs={12}>
+          <Form.Group>
+            <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
+              {lang === 'en' ? 'Search by name:' : lang === 'tc' ? '用名稱搜尋：' : '用名称搜索：'}
+            </Form.Label>
+            <InputGroup>
+              <Form.Control
+                type="text"
+                placeholder={lang === 'en' ? 'Car park name' : lang === 'tc' ? '停車場名稱' : '停车场名称'}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ borderRight: 0, borderRadius: '0.375rem 0 0 0.375rem', fontWeight: 500 }}
+              />
+              {search && (
+                <Button variant="outline-secondary" onClick={() => setSearch('')} style={{ borderRadius: '0 0.375rem 0.375rem 0' }}>
+                  {lang === 'en' ? 'Clear' : lang === 'tc' ? '清除' : '清除'}
+                </Button>
+              )}
+            </InputGroup>
+          </Form.Group>
+        </Col>
+      </Row>
       {geoError && <Alert variant="warning">{geoError}</Alert>}
       {origin && (
         <Alert variant="info">
@@ -353,26 +354,15 @@ function Main({ lang, filterDistricts, customTitle }) {
           {origin.label}
         </Alert>
       )}
-      {context.weather.alerts.length > 0 && (
-        <Alert variant={context.weather.severe ? 'danger' : 'secondary'}>
+      {context.weather.severe && (
+        <Alert variant="danger">
           {lang === 'en' ? 'Weather warning: ' : lang === 'tc' ? '天氣警告：' : '天气警告：'}
           {context.weather.alerts.map((alert) => `${alert.name}${alert.type ? `（${alert.type}）` : ''}`).join('、')}
-          {context.weather.severe
-            ? (lang === 'en'
-              ? ' Rain or a typhoon signal is in force. Check the height limit before you drive.'
-              : lang === 'tc'
-              ? ' 現正有雨或風球。出發前先看高度限制。'
-              : ' 现正有雨或风球。出发前先看高度限制。')
-            : ''}
-        </Alert>
-      )}
-      {context.speed.valid > 0 && (
-        <Alert variant={context.speed.jammed > 0 ? 'warning' : 'light'}>
           {lang === 'en'
-            ? `Major roads at ${context.speed.time || 'now'}: ${context.speed.jammed} segments under 25 km/h, ${context.speed.slow} between 25 and 40 km/h.`
+            ? ' Rain or a typhoon signal is in force. Check the height limit before you drive.'
             : lang === 'tc'
-            ? `主要道路 ${context.speed.time || '現時'}：${context.speed.jammed} 段低於 25 km/h，${context.speed.slow} 段介乎 25 至 40 km/h。`
-            : `主要道路 ${context.speed.time || '现时'}：${context.speed.jammed} 段低于 25 km/h，${context.speed.slow} 段介于 25 至 40 km/h。`}
+            ? ' 現正有雨或風球。出發前先看高度限制。'
+            : ' 现正有雨或风球。出发前先看高度限制。'}
         </Alert>
       )}
 
@@ -429,6 +419,15 @@ function Main({ lang, filterDistricts, customTitle }) {
               : (lang === 'en' ? 'All Parking Lots' : lang === 'tc' ? '所有停車場' : '所有停车场')}
             <Badge bg="info" style={{ marginLeft: 8 }}>{otherCarparks.length}</Badge>
           </h2>
+          {origin && otherCarparks.length > 0 && otherCarparks.every((carpark) => carpark.closure) && (
+            <p className="driver-warn">
+              {lang === 'en'
+                ? 'These districts have a road closure or special traffic notice. Open a car park to read the notice.'
+                : lang === 'tc'
+                ? '這幾個場的地區有封路或特別交通通告。入去個別場先看得清楚。'
+                : '这几个场的地区有封路或特别交通通告。进去个别场先看得清楚。'}
+            </p>
+          )}
           {origin ? (
             <DriverCards
               carparks={otherCarparks}
@@ -437,6 +436,7 @@ function Main({ lang, filterDistricts, customTitle }) {
               onToggleFavorite={toggleFavorite}
               favorites={favorites}
               lang={lang}
+              hideSharedClosure={otherCarparks.length > 0 && otherCarparks.every((carpark) => carpark.closure)}
             />
           ) : (
           <CarparkTable
@@ -454,6 +454,15 @@ function Main({ lang, filterDistricts, customTitle }) {
           {(origin || search) && favoriteCarparks.length + otherCarparks.length === 0 && (
             <p className="text-center text-danger mt-4" style={{ fontWeight: 700 }}>
               {lang === 'en' ? 'No results found. Try adjusting your search or filters.' : lang === 'tc' ? '找不到結果，請嘗試調整搜尋或篩選條件。' : '未找到结果，请尝试调整搜索或筛选条件。'}
+            </p>
+          )}
+          {origin && context.speed.valid > 0 && (
+            <p className="forecast-note mt-4">
+              {lang === 'en'
+                ? `Major roads: ${context.speed.jammed} segments under 25 km/h, ${context.speed.slow} between 25 and 40 km/h.`
+                : lang === 'tc'
+                ? `全港主要道路：${context.speed.jammed} 段低於 25 km/h，${context.speed.slow} 段介乎 25 至 40 km/h。`
+                : `全港主要道路：${context.speed.jammed} 段低于 25 km/h，${context.speed.slow} 段介于 25 至 40 km/h。`}
             </p>
           )}
         </>
@@ -510,7 +519,31 @@ function directionsUrl(origin, carpark) {
   return `https://www.google.com/maps/search/?api=1&query=${destination}`;
 }
 
-function DriverCards({ carparks, vehicleType, origin, onToggleFavorite, favorites, lang }) {
+function DriverCards({ carparks, vehicleType, origin, onToggleFavorite, favorites, lang, hideSharedClosure }) {
+  const [series, setSeries] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadVacancySeries().then((bundle) => {
+      if (!cancelled) setSeries(bundle);
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const soon = useMemo(() => {
+    if (!series) return {};
+    const next = {};
+    carparks.forEach((carpark) => {
+      const value = carpark[`${vehicleType}_vacancy`];
+      if (!(value >= 0)) return;
+      const result = forecastPark(series, carpark.park_Id, {
+        value,
+        timeMs: parseVacancyTime(carpark[`${vehicleType}_lastupdate`]) || Date.now(),
+      }, Date.now(), { withMetrics: false });
+      if (result?.ok) next[carpark.park_Id] = result.predicted;
+    });
+    return next;
+  }, [series, carparks, vehicleType]);
   return (
     <div className="driver-list">
       {carparks.map((carpark, index) => {
@@ -537,7 +570,10 @@ function DriverCards({ carparks, vehicleType, origin, onToggleFavorite, favorite
                 )}
                 <StatusBadge status={carpark.opening_status} lang={lang} />
                 {height > 0 && <span>{lang === 'en' ? `Height ${height} m` : `高度 ${height} m`}</span>}
-                {carpark.closure && <span className="driver-warn">{lang === 'en' ? 'Closure in this district' : lang === 'tc' ? '同區封路' : '同区封路'}</span>}
+                {carpark.closure && !hideSharedClosure && <span className="driver-warn">{lang === 'en' ? 'Closure in this district' : lang === 'tc' ? '同區封路' : '同区封路'}</span>}
+                {soon[carpark.park_Id] != null && (
+                  <span>{lang === 'en' ? `In 30 min ${soon[carpark.park_Id]}` : `30分鐘後 ${soon[carpark.park_Id]}`}</span>
+                )}
                 {updated && <span>{lang === 'en' ? `Updated ${updated}` : `更新 ${updated}`}</span>}
               </p>
               <a className="btn btn-primary btn-sm" href={directionsUrl(origin, carpark)} target="_blank" rel="noopener noreferrer">
