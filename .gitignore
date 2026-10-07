@@ -1,12 +1,1 @@
-.env
-.venv/
-venv/
-__pycache__/
-*.py[cod]
-*.db
-*.sqlite3
-instance/
-app/data/
-logs/
-*.log
-.DS_Store
+node_modules/
