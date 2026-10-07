@@ -15,7 +15,7 @@ Th is a React version for https://github.com/HenryLok0/IT114115-FYP-EaseParkHK
 EaseParkHK is a modern, mobile-friendly web platform for quickly browsing parking lot information and real-time traffic cameras across all districts of Hong Kong.
 
 **Try it now:**  
-https://henrylok0.github.io/EaseParkHK/
+https://henrylok0.github.io/DS125109-FYP/
 
 ---
 
