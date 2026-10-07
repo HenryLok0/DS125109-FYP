@@ -264,3 +264,70 @@ body.dark-mode .driver-prompt {
   display: none;
   /* Initially hidden until button is clicked */
 }
+
+.forecast-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.forecast-stat {
+  flex: 1 1 140px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f4f7fb;
+}
+
+.forecast-stat span,
+.forecast-stat em {
+  display: block;
+  color: #526070;
+  font-style: normal;
+  font-size: 0.85rem;
+}
+
+.forecast-stat strong {
+  display: block;
+  font-size: 1.8rem;
+  line-height: 1.1;
+  color: #172033;
+}
+
+.forecast-stat.accent {
+  background: #e8f2ff;
+}
+
+.forecast-spark {
+  width: 100%;
+  height: 78px;
+  margin-top: 12px;
+}
+
+.forecast-note,
+.forecast-foot {
+  margin: 8px 0 0;
+  color: #526070;
+  font-size: 0.92rem;
+}
+
+body.dark-mode .card.forecast-panel {
+  background: #23272f !important;
+  color: #e0e0e0 !important;
+  border-color: #3a4150 !important;
+}
+
+body.dark-mode .forecast-stat,
+body.dark-mode .forecast-stat.accent {
+  background: #1b1f27;
+}
+
+body.dark-mode .forecast-stat strong {
+  color: #e0e0e0;
+}
+
+body.dark-mode .forecast-note,
+body.dark-mode .forecast-foot,
+body.dark-mode .forecast-stat span,
+body.dark-mode .forecast-stat em {
+  color: #b7c0cc;
+}

@@ -3,40 +3,80 @@ import { useParams, Link } from 'react-router-dom';
 import { Spinner, Button, Container, Row, Col, Card, ListGroup, Table } from 'react-bootstrap';
 import { Telephone, Globe, Map } from 'react-bootstrap-icons';
 import { loadParkingContext, noticeMatchesPark } from '../parkingContext';
+import VacancyForecast from './VacancyForecast';
+
+function RemarkText({ text }) {
+  const lines = String(text || '')
+    .split(/<br\s*\/?>/i)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return 'N/A';
+  return lines.map((line, index) => (
+    <span key={`${index}-${line}`} className="d-block">{line}</span>
+  ));
+}
 
 function CarparkDetail({ lang = 'en' }) {
   const { park_id } = useParams();
   const [info, setInfo] = useState(null);
   const [vacancy, setVacancy] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [vacancyLoading, setVacancyLoading] = useState(true);
   const [lastFetched, setLastFetched] = useState(null);
   const [situation, setSituation] = useState({ notices: [], weather: { alerts: [], severe: false }, speed: { valid: 0, jammed: 0, slow: 0, time: '' } });
 
   useEffect(() => {
-    async function fetchDetail() {
+    let cancelled = false;
+    async function fetchInfo() {
       setLoading(true);
       try {
-        const [infoRes, vacancyRes] = await Promise.all([
-          fetch('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json'),
-          fetch('https://resource.data.one.gov.hk/td/carpark/vacancy_all.json'),
-        ]);
+        const infoRes = await fetch('https://resource.data.one.gov.hk/td/carpark/basic_info_all.json');
         const infoData = await infoRes.json();
-        const vacancyData = await vacancyRes.json();
-
         const carparkInfo = (infoData.car_park || []).find(c => c.park_id === park_id);
-        const carparkVacancy = (vacancyData.car_park || []).find(c => c.park_id === park_id);
-
-        setInfo(carparkInfo);
-        setVacancy(carparkVacancy);
-        setLastFetched(new Date());
+        if (!cancelled) setInfo(carparkInfo || null);
       } catch (e) {
-        setInfo(null);
-        setVacancy(null);
+        if (!cancelled) setInfo(null);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
-    fetchDetail();
+    fetchInfo();
+    return () => {
+      cancelled = true;
+    };
+  }, [park_id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setVacancy(null);
+    setVacancyLoading(true);
+
+    async function fetchVacancy() {
+      try {
+        const vacancyRes = await fetch(
+          `https://resource.data.one.gov.hk/td/carpark/vacancy_${park_id}.json`,
+          { cache: 'no-store' },
+        );
+        if (!vacancyRes.ok) throw new Error('vacancy');
+        const vacancyData = await vacancyRes.json();
+        const carparkVacancy = (vacancyData.car_park || []).find(c => c.park_id === park_id) || null;
+        if (!cancelled) {
+          setVacancy(carparkVacancy);
+          setLastFetched(new Date());
+        }
+      } catch (e) {
+        // Keep the last good reading when a refresh fails.
+      } finally {
+        if (!cancelled) setVacancyLoading(false);
+      }
+    }
+
+    fetchVacancy();
+    const timer = setInterval(fetchVacancy, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [park_id]);
 
   useEffect(() => {
@@ -152,6 +192,12 @@ function CarparkDetail({ lang = 'en' }) {
     },
   };
 
+  const categoryMap = {
+    en: { HOURLY: 'Hourly' },
+    tc: { HOURLY: '時租' },
+    sc: { HOURLY: '时租' },
+  };
+
   const vehicleTypeMap = {
     en: {
       P: 'Private Car',
@@ -262,7 +308,8 @@ function CarparkDetail({ lang = 'en' }) {
                   <strong>{translations[lang].heightLimit}</strong>: {info.height ? `${info.height}m` : 'N/A'}
                 </ListGroup.Item>
                 <ListGroup.Item>
-                  <strong>{translations[lang].remark}</strong>: {info[`remark_${lang}`] || info.remark_en || 'N/A'}
+                  <strong>{translations[lang].remark}</strong>
+                  <RemarkText text={info[`remark_${lang}`] || info.remark_en} />
                 </ListGroup.Item>
               </ListGroup>
             </Card.Body>
@@ -319,10 +366,12 @@ function CarparkDetail({ lang = 'en' }) {
               )}
             </Card.Body>
           </Card>
-          <Card>
+          <Card className="mb-3">
             <Card.Body>
               <Card.Title>{translations[lang].vacancyInfo}</Card.Title>
-              {vacancy && vacancy.vehicle_type && vacancy.vehicle_type.length > 0 ? (
+              {vacancyLoading && !vacancy ? (
+                <Spinner animation="border" size="sm" />
+              ) : vacancy && vacancy.vehicle_type && vacancy.vehicle_type.length > 0 ? (
                 <Table striped bordered hover responsive>
                   <thead>
                     <tr>
@@ -337,7 +386,7 @@ function CarparkDetail({ lang = 'en' }) {
                       vt.service_category.map(sc => (
                         <tr key={`${vt.type}-${sc.category}`}>
                           <td>{vehicleTypeMap[lang][vt.type] || vt.type}</td>
-                          <td>{sc.category}</td>
+                          <td>{categoryMap[lang][sc.category] || sc.category}</td>
                           <td style={{ color: sc.vacancy > 0 ? 'green' : sc.vacancy === 0 ? 'red' : 'gray' }}>
                             {sc.vacancy >= 0 ? sc.vacancy : 'N/A'}
                           </td>
@@ -352,6 +401,7 @@ function CarparkDetail({ lang = 'en' }) {
               )}
             </Card.Body>
           </Card>
+          <VacancyForecast parkId={park_id} vacancy={vacancy} lang={lang} refreshedAt={lastFetched} />
         </Col>
       </Row>
       <p className="text-muted mt-4">
