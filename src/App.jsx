@@ -8,9 +8,22 @@ import News from './components/News';
 import { Routes, Route } from 'react-router-dom';
 import Cameredistrist from './components/Cameredistrist'; // 新增這行
 
+function languageFromBrowser() {
+  const saved = localStorage.getItem('lang');
+  if (saved === 'en' || saved === 'tc' || saved === 'sc') return saved;
+  const tags = navigator.languages?.length ? navigator.languages : [navigator.language || ''];
+  for (const tag of tags) {
+    const code = String(tag).toLowerCase();
+    if (!code.startsWith('zh')) continue;
+    if (code.includes('cn') || code.includes('sg') || code.includes('hans')) return 'sc';
+    return 'tc';
+  }
+  return 'en';
+}
+
 function App() {
   const [darkMode, setDarkMode] = useState(localStorage.getItem('darkMode') === 'enabled');
-  const [lang, setLang] = useState(localStorage.getItem('lang') || 'en');
+  const [lang, setLang] = useState(languageFromBrowser);
 
   useEffect(() => {
     document.body.classList.toggle('dark-mode', darkMode);

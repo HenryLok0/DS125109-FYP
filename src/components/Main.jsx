@@ -31,7 +31,7 @@ function Main({ lang, filterDistricts, customTitle }) {
   const [search, setSearch] = useState('');
   const [addressQuery, setAddressQuery] = useState('');
   const [origin, setOrigin] = useState(null);
-  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(() => !filterDistricts || filterDistricts.length === 0);
   const [geoError, setGeoError] = useState('');
   const [onlyWithSpace, setOnlyWithSpace] = useState(false);
   const [browseAll, setBrowseAll] = useState(false);
@@ -167,7 +167,13 @@ function Main({ lang, filterDistricts, customTitle }) {
   const useMyLocation = () => {
     setGeoError('');
     if (!navigator.geolocation) {
-      setGeoError(lang === 'en' ? 'This browser cannot read your location.' : '這個瀏覽器不能讀取位置。');
+      setBrowseAll(true);
+      setGeoLoading(false);
+      setGeoError(lang === 'en'
+        ? 'This browser cannot read your location. Car parks are listed from the most spaces to the fewest.'
+        : lang === 'tc'
+        ? '這個瀏覽器不能讀取位置。停車場按空位由多到少排列。'
+        : '这个浏览器不能读取位置。停车场按空位由多到少排列。');
       return;
     }
     setGeoLoading(true);
@@ -183,12 +189,27 @@ function Main({ lang, filterDistricts, customTitle }) {
         setGeoLoading(false);
       },
       () => {
-        setGeoError(lang === 'en' ? 'Location permission was denied. Type an address instead.' : lang === 'tc' ? '未能取得位置，請改為輸入地址。' : '未能取得位置，请改为输入地址。');
+        setOrigin(null);
+        setOnlyWithSpace(false);
+        setBrowseAll(true);
+        setGeoError(lang === 'en'
+          ? 'Location was not allowed. Car parks are listed from the most spaces to the fewest.'
+          : lang === 'tc'
+          ? '未允許使用位置。停車場按空位由多到少排列。'
+          : '未允许使用位置。停车场按空位由多到少排列。');
         setGeoLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 12000 }
-    );
-  };
+    { enableHighAccuracy: true, timeout: 12000 }
+  );
+};
+
+  // Ask for the device location on the home page. The full list is the fallback.
+  useEffect(() => {
+    if (filterDistricts && filterDistricts.length > 0) return;
+    useMyLocation();
+    // The prompt should happen once per visit, not again when the label language changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleFavorite = parkId => {
     let newFavs;
@@ -377,7 +398,13 @@ function Main({ lang, filterDistricts, customTitle }) {
         </div>
       ) : (
         <>
-          {!origin && !search && !browseAll && (
+          {!origin && !search && !browseAll && geoLoading && (
+            <p className="text-center mt-4" style={{ fontWeight: 600, color: '#1976d2' }}>
+              {lang === 'en' ? 'Reading your location…' : lang === 'tc' ? '正在讀取你的位置…' : '正在读取你的位置…'}
+            </p>
+          )}
+
+          {!origin && !search && !browseAll && !geoLoading && (
             <div className="driver-prompt">
               <p>
                 {lang === 'en'
@@ -735,11 +762,12 @@ function CarparkTable({ carparks, vehicleType, onShowMap, onToggleFavorite, favo
       const right = b.distanceKm == null ? 1e9 : b.distanceKm;
       return sortDirection === 'asc' ? left - right : right - left;
     }
+    if (sortColumn === 'vacancy_ranking' && a.vacancy_ranking !== b.vacancy_ranking) {
+      const diff = a.vacancy_ranking - b.vacancy_ranking;
+      return sortDirection === 'asc' ? diff : -diff;
+    }
     if (a.status_ranking !== b.status_ranking) {
       return a.status_ranking - b.status_ranking;
-    }
-    if (sortColumn === 'vacancy_ranking') {
-      if (b.vacancy_ranking !== a.vacancy_ranking) return b.vacancy_ranking - a.vacancy_ranking;
     }
     let aValue = a[sortColumn];
     let bValue = b[sortColumn];
