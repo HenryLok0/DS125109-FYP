@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Navbar, Nav, NavDropdown, Container, Dropdown, Offcanvas, Accordion } from 'react-bootstrap';
-import { FaGlobe, FaMoon, FaSun, FaCar } from 'react-icons/fa';
+import { FaGlobe, FaMoon, FaSun } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -248,7 +248,7 @@ const Header = ({
       <Navbar bg={darkMode ? 'dark' : 'light'} variant={darkMode ? 'dark' : 'light'} expand="lg" sticky="top">
         <Container>
           <Navbar.Brand as={Link} to="/">
-            <FaCar style={{ marginRight: 8, color: '#0d6efd' }} />
+            <img src={`${process.env.PUBLIC_URL}/logo.svg`} alt="" width="32" height="32" style={{ marginRight: 8 }} />
             {brandName}
           </Navbar.Brand>
           <Navbar.Toggle aria-controls="main-navbar" onClick={() => setShowOffcanvas(true)} />
@@ -288,7 +288,7 @@ const Header = ({
       <Offcanvas show={showOffcanvas} onHide={() => setShowOffcanvas(false)} placement="start" className="d-lg-none">
         <Offcanvas.Header closeButton>
           <Offcanvas.Title>
-            <FaCar style={{ marginRight: 8, color: '#0d6efd' }} />
+            <img src={`${process.env.PUBLIC_URL}/logo.svg`} alt="" width="32" height="32" style={{ marginRight: 8 }} />
             {brandName}
           </Offcanvas.Title>
         </Offcanvas.Header>
