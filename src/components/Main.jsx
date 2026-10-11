@@ -29,6 +29,7 @@ function Main({ lang, filterDistricts, customTitle }) {
   const [mapInfo, setMapInfo] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const [addressQuery, setAddressQuery] = useState('');
   const [origin, setOrigin] = useState(null);
   const [geoLoading, setGeoLoading] = useState(() => !filterDistricts || filterDistricts.length === 0);
@@ -207,8 +208,6 @@ function Main({ lang, filterDistricts, customTitle }) {
   useEffect(() => {
     if (filterDistricts && filterDistricts.length > 0) return;
     useMyLocation();
-    // The prompt should happen once per visit, not again when the label language changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleFavorite = parkId => {
@@ -230,10 +229,20 @@ function Main({ lang, filterDistricts, customTitle }) {
     closure: context.notices.some((notice) => noticeMatchesPark(notice, carpark)),
   })), [carparks, origin, context.notices]);
 
+  const nameSuggestions = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return [];
+    return carparks.filter((carpark) => (
+      [carpark.name.en, carpark.name.tc, carpark.name.sc].some((name) => (
+        name && name.toLowerCase().includes(query)
+      ))
+    )).slice(0, 8);
+  }, [carparks, search]);
+
   // District, name, vacancy, and optional distance from the user's address.
   const filterCarparks = list =>
     list.filter(carpark => {
-      if (onlyWithSpace) {
+      if (onlyWithSpace && !search.trim()) {
         const spaces = carpark[`${vehicleType}_vacancy`];
         if (carpark.opening_status !== 'OPEN' || !(spaces > 0)) return false;
       }
@@ -351,20 +360,41 @@ function Main({ lang, filterDistricts, customTitle }) {
             <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
               {lang === 'en' ? 'Search by name:' : lang === 'tc' ? '用名稱搜尋：' : '用名称搜索：'}
             </Form.Label>
-            <InputGroup>
-              <Form.Control
-                type="text"
-                placeholder={lang === 'en' ? 'Car park name' : lang === 'tc' ? '停車場名稱' : '停车场名称'}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                style={{ borderRight: 0, borderRadius: '0.375rem 0 0 0.375rem', fontWeight: 500 }}
-              />
-              {search && (
-                <Button variant="outline-secondary" onClick={() => setSearch('')} style={{ borderRadius: '0 0.375rem 0.375rem 0' }}>
-                  {lang === 'en' ? 'Clear' : lang === 'tc' ? '清除' : '清除'}
-                </Button>
+            <div style={{ position: 'relative' }}>
+              <InputGroup>
+                <Form.Control
+                  type="text"
+                  placeholder={lang === 'en' ? 'Car park name' : lang === 'tc' ? '停車場名稱' : '停车场名称'}
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  style={{ borderRight: 0, borderRadius: '0.375rem 0 0 0.375rem', fontWeight: 500 }}
+                />
+                {search && (
+                  <Button variant="outline-secondary" onClick={() => setSearch('')} style={{ borderRadius: '0 0.375rem 0.375rem 0' }}>
+                    {lang === 'en' ? 'Clear' : lang === 'tc' ? '清除' : '清除'}
+                  </Button>
+                )}
+              </InputGroup>
+              {searchFocused && nameSuggestions.length > 0 && (
+                <ListGroup className="name-suggest">
+                  {nameSuggestions.map((carpark) => (
+                    <ListGroup.Item
+                      action
+                      key={carpark.park_Id}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setSearch(carpark.name[lang] || carpark.name.en || '');
+                        setSearchFocused(false);
+                      }}
+                    >
+                      {carpark.name[lang] || carpark.name.en}
+                    </ListGroup.Item>
+                  ))}
+                </ListGroup>
               )}
-            </InputGroup>
+            </div>
           </Form.Group>
         </Col>
       </Row>

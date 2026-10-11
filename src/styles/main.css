@@ -331,3 +331,20 @@ body.dark-mode .forecast-stat span,
 body.dark-mode .forecast-stat em {
   color: #b7c0cc;
 }
+
+.name-suggest {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12);
+}
+
+body.dark-mode .name-suggest .list-group-item {
+  background: #23272f;
+  color: #e0e0e0;
+  border-color: #3a4150;
+}
