@@ -292,6 +292,7 @@ function Main({ lang, filterDistricts, customTitle }) {
       return true;
     });
 
+  const districtView = Boolean(filterDistricts && filterDistricts.length > 0);
   const favoriteCarparks = filterCarparks(annotated.filter(c => favorites.includes(c.park_Id)));
   const matchedCarparks = filterCarparks(annotated.filter(c => !favorites.includes(c.park_Id)));
   const otherCarparks = origin
@@ -445,13 +446,13 @@ function Main({ lang, filterDistricts, customTitle }) {
         </div>
       ) : (
         <>
-          {!origin && !search && !browseAll && geoLoading && (
+          {!districtView && !origin && !search && !browseAll && geoLoading && (
             <p className="text-center mt-4" style={{ fontWeight: 600, color: '#1976d2' }}>
               {lang === 'en' ? 'Reading your location…' : lang === 'tc' ? '正在讀取你的位置…' : '正在读取你的位置…'}
             </p>
           )}
 
-          {!origin && !search && !browseAll && !geoLoading && (
+          {!districtView && !origin && !search && !browseAll && !geoLoading && (
             <div className="driver-prompt">
               <p>
                 {lang === 'en'
@@ -485,7 +486,7 @@ function Main({ lang, filterDistricts, customTitle }) {
             </>
           )}
 
-          {(origin || search || browseAll) && (
+          {(districtView || origin || search || browseAll) && (
             <>
           <h2 className="mt-4" style={{ fontWeight: 700, color: '#1976d2' }}>
             {origin

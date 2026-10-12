@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useParams } from 'react-router-dom';
 import Main from './Main';
 
@@ -134,46 +134,30 @@ function normalizeDistrictName(name) {
 function District({ lang: propLang }) {
   const params = useParams();
   const lang = propLang || localStorage.getItem('lang') || 'en';
-  const [districts, setDistricts] = useState([]);
-  const [title, setTitle] = useState('');
-
-  useEffect(() => {
-    let key = params.key;
-    // 先判斷是不是 region
-    if (REGION_DISTRICTS[key]) {
-      setDistricts(REGION_DISTRICTS[key]);
-      setTitle(
-        REGION_TITLE[key]?.[lang] ||
-        (
-          lang === 'en'
-            ? REGION_LABELS[key]?.[lang] || key.replace(/_/g, ' ')
-            : (REGION_LABELS[key]?.[lang] || key.replace(/_/g, ' ')) + '停車場資訊'
-        )
-      );
-    } else {
-      // 否則當作 district
-      const decoded = normalizeDistrictName(decodeURIComponent(key));
-      setDistricts([decoded]);
-      setTitle(
-        lang === 'en'
-          ? (DISTRICT_LABELS[decoded]?.[lang] || decoded)
-          : (DISTRICT_LABELS[decoded]?.[lang] || decoded) + '停車場資訊'
-      );
-    }
-  }, [params, lang]);
-
-  function DistrictMain(props) {
-    return (
-      <Main
-        {...props}
-        lang={lang}
-        filterDistricts={districts}
-        customTitle={title}
-      />
+  const key = params.key || '';
+  const isRegion = Boolean(REGION_DISTRICTS[key]);
+  const decoded = isRegion ? '' : normalizeDistrictName(decodeURIComponent(key));
+  const districts = isRegion ? REGION_DISTRICTS[key] : (decoded ? [decoded] : []);
+  let title = '';
+  if (isRegion) {
+    title = REGION_TITLE[key]?.[lang] || (
+      lang === 'en'
+        ? REGION_LABELS[key]?.[lang] || key.replace(/_/g, ' ')
+        : (REGION_LABELS[key]?.[lang] || key.replace(/_/g, ' ')) + '停車場資訊'
     );
+  } else if (decoded) {
+    title = lang === 'en'
+      ? (DISTRICT_LABELS[decoded]?.[lang] || decoded)
+      : (DISTRICT_LABELS[decoded]?.[lang] || decoded) + '停車場資訊';
   }
 
-  return <DistrictMain />;
+  return (
+    <Main
+      lang={lang}
+      filterDistricts={districts}
+      customTitle={title}
+    />
+  );
 }
 
 export default District;
