@@ -347,11 +347,11 @@ function Main({ lang, filterDistricts, customTitle }) {
                     if (e.key === 'Enter') submitQuery();
                   }}
                 />
-                <Button variant="primary" onClick={submitQuery} disabled={geoLoading || !query.trim()}>
-                  {geoLoading
-                    ? (lang === 'en' ? 'Finding...' : '查詢中...')
-                    : (lang === 'en' ? 'Search' : lang === 'tc' ? '搜尋' : '搜索')}
-                </Button>
+                {geoLoading && query.trim() && (
+                  <span className="input-group-text">
+                    {lang === 'en' ? 'Finding...' : '查詢中...'}
+                  </span>
+                )}
                 <Button variant="outline-primary" onClick={useMyLocation} disabled={geoLoading}>
                   {lang === 'en' ? 'My location' : lang === 'tc' ? '我的位置' : '我的位置'}
                 </Button>
