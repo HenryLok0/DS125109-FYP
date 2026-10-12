@@ -28,9 +28,9 @@ function Main({ lang, filterDistricts, customTitle }) {
   const [showMap, setShowMap] = useState(false);
   const [mapInfo, setMapInfo] = useState({});
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
   const [search, setSearch] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
-  const [addressQuery, setAddressQuery] = useState('');
   const [origin, setOrigin] = useState(null);
   const [geoLoading, setGeoLoading] = useState(() => !filterDistricts || filterDistricts.length === 0);
   const [geoError, setGeoError] = useState('');
@@ -137,19 +137,24 @@ function Main({ lang, filterDistricts, customTitle }) {
     };
   }, []);
 
-  const findByAddress = async () => {
+  const findByAddress = async (text) => {
+    const lookup = (typeof text === 'string' ? text : query).trim();
+    if (!lookup) return;
     setGeoError('');
     setGeoLoading(true);
     try {
-      const place = await geocodeAddress(addressQuery);
+      const place = await geocodeAddress(lookup);
       if (!place) {
         setOrigin(null);
         setGeoError(lang === 'en' ? 'That address was not found.' : lang === 'tc' ? '找不到這個地址。' : '找不到这个地址。');
         return;
       }
+      setQuery(lookup);
+      setSearch('');
       setOrigin(place);
       setOnlyWithSpace(true);
       setBrowseAll(false);
+      setSearchFocused(false);
     } catch (error) {
       setOrigin(null);
       setGeoError(lang === 'en' ? 'Address lookup failed. Try again.' : lang === 'tc' ? '地址查詢失敗，請再試一次。' : '地址查询失败，请再试一次。');
@@ -158,9 +163,17 @@ function Main({ lang, filterDistricts, customTitle }) {
     }
   };
 
+  const chooseParkName = (carpark) => {
+    const name = carpark.name[lang] || carpark.name.en || '';
+    setQuery(name);
+    setSearch(name);
+    setSearchFocused(false);
+  };
+
   const clearAddress = () => {
     setOrigin(null);
-    setAddressQuery('');
+    setQuery('');
+    setSearch('');
     setGeoError('');
     setOnlyWithSpace(false);
   };
@@ -185,6 +198,8 @@ function Main({ lang, filterDistricts, customTitle }) {
           longitude: position.coords.longitude,
           label: lang === 'en' ? 'Your current location' : lang === 'tc' ? '你的目前位置' : '你的目前位置',
         });
+        setQuery('');
+        setSearch('');
         setOnlyWithSpace(true);
         setBrowseAll(false);
         setGeoLoading(false);
@@ -238,6 +253,16 @@ function Main({ lang, filterDistricts, customTitle }) {
       ))
     )).slice(0, 8);
   }, [carparks, search]);
+
+  const submitQuery = () => {
+    const text = query.trim();
+    if (!text || geoLoading) return;
+    if (nameSuggestions.length > 0) {
+      chooseParkName(nameSuggestions[0]);
+      return;
+    }
+    findByAddress(text);
+  };
 
   // District, name, vacancy, and optional distance from the user's address.
   const filterCarparks = list =>
@@ -293,10 +318,10 @@ function Main({ lang, filterDistricts, customTitle }) {
           </h1>
           <p style={{ color: '#607d8b', fontSize: '1.15em', fontWeight: 500 }}>
             {lang === 'en'
-              ? 'Enter an address. Nearest open car parks with a space are listed, including about how many spaces are left in 30 minutes.'
+              ? 'Enter an address or a car park name. Nearest open car parks with a space are listed, including about how many spaces are left in 30 minutes.'
               : lang === 'tc'
-              ? '輸入地址，列出最近、營業中而且有位的場，並顯示 30 分鐘後大約仲有幾多位。'
-              : '输入地址，列出最近、营业中而且有位的场，并显示 30 分钟后大约还有多少个位。'}
+              ? '輸入地址或停車場名稱。最近、營業中而且有位的場會列出，並顯示 30 分鐘後大約仲有幾多位。'
+              : '输入地址或停车场名称。最近、营业中而且有位的场会列出，并显示 30 分钟后大约还有多少个位。'}
           </p>
         </div>
       </div>
@@ -304,46 +329,72 @@ function Main({ lang, filterDistricts, customTitle }) {
         <Col md={8} xs={12} className="mb-2 mb-md-0">
           <Form.Group>
             <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
-              {lang === 'en' ? 'Your address' : lang === 'tc' ? '你的地址' : '你的地址'}
+              {lang === 'en' ? 'Address or car park name' : lang === 'tc' ? '地址或停車場名稱' : '地址或停车场名称'}
             </Form.Label>
-            <InputGroup>
-              <Form.Control
-                type="text"
-                placeholder={lang === 'en' ? 'For example: Nathan Road, Tsim Sha Tsui' : lang === 'tc' ? '例如：尖沙咀彌敦道' : '例如：尖沙咀弥敦道'}
-                value={addressQuery}
-                onChange={e => setAddressQuery(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') findByAddress();
-                }}
-              />
-              <Button variant="primary" onClick={findByAddress} disabled={geoLoading || !addressQuery.trim()}>
-                {geoLoading
-                  ? (lang === 'en' ? 'Finding...' : '查詢中...')
-                  : (lang === 'en' ? 'Find spaces' : lang === 'tc' ? '找有位的場' : '找有位的场')}
-              </Button>
-              <Button variant="outline-primary" onClick={useMyLocation} disabled={geoLoading}>
-                {lang === 'en' ? 'My location' : lang === 'tc' ? '我的位置' : '我的位置'}
-              </Button>
-              {origin && (
-                <Button variant="outline-secondary" onClick={clearAddress}>
-                  {lang === 'en' ? 'Clear' : '清除'}
+            <div style={{ position: 'relative' }}>
+              <InputGroup>
+                <Form.Control
+                  type="text"
+                  placeholder={lang === 'en' ? 'Nathan Road, Tsim Sha Tsui, or a car park name' : lang === 'tc' ? '例如：尖沙咀彌敦道，或停車場名稱' : '例如：尖沙咀弥敦道，或停车场名称'}
+                  value={query}
+                  onChange={e => {
+                    setQuery(e.target.value);
+                    setSearch(e.target.value);
+                  }}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') submitQuery();
+                  }}
+                />
+                <Button variant="primary" onClick={submitQuery} disabled={geoLoading || !query.trim()}>
+                  {geoLoading
+                    ? (lang === 'en' ? 'Finding...' : '查詢中...')
+                    : (lang === 'en' ? 'Search' : lang === 'tc' ? '搜尋' : '搜索')}
                 </Button>
+                <Button variant="outline-primary" onClick={useMyLocation} disabled={geoLoading}>
+                  {lang === 'en' ? 'My location' : lang === 'tc' ? '我的位置' : '我的位置'}
+                </Button>
+                {(origin || query) && (
+                  <Button variant="outline-secondary" onClick={clearAddress}>
+                    {lang === 'en' ? 'Clear' : '清除'}
+                  </Button>
+                )}
+              </InputGroup>
+              {searchFocused && query.trim() && (
+                <ListGroup className="name-suggest">
+                  {nameSuggestions.map((carpark) => (
+                    <ListGroup.Item
+                      action
+                      key={carpark.park_Id}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        chooseParkName(carpark);
+                      }}
+                    >
+                      {carpark.name[lang] || carpark.name.en}
+                    </ListGroup.Item>
+                  ))}
+                  <ListGroup.Item
+                    action
+                    className="name-suggest-address"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      findByAddress(query);
+                    }}
+                  >
+                    {lang === 'en'
+                      ? `Find car parks near “${query.trim()}”`
+                      : lang === 'tc'
+                      ? `以「${query.trim()}」為地址，找附近的場`
+                      : `以「${query.trim()}」为地址，找附近的场`}
+                  </ListGroup.Item>
+                </ListGroup>
               )}
-            </InputGroup>
+            </div>
           </Form.Group>
         </Col>
         <Col md={4} xs={12}>
-          <Form.Check
-            type="checkbox"
-            id="only-with-space"
-            checked={onlyWithSpace}
-            onChange={e => setOnlyWithSpace(e.target.checked)}
-            label={lang === 'en' ? 'Only open parks with a space' : lang === 'tc' ? '只顯示營業中而且有位' : '只显示营业中而且有位'}
-          />
-        </Col>
-      </Row>
-      <Row className="mb-3 align-items-end">
-        <Col md={4} xs={12} className="mb-2 mb-md-0">
           <Form.Group>
             <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
               {lang === 'en' ? 'Vehicle Type:' : lang === 'tc' ? '車輛類型：' : '车辆类型：'}
@@ -355,49 +406,15 @@ function Main({ lang, filterDistricts, customTitle }) {
             </Form.Select>
           </Form.Group>
         </Col>
-        <Col md={8} xs={12}>
-          <Form.Group>
-            <Form.Label style={{ fontWeight: 700, color: '#1976d2' }}>
-              {lang === 'en' ? 'Search by name:' : lang === 'tc' ? '用名稱搜尋：' : '用名称搜索：'}
-            </Form.Label>
-            <div style={{ position: 'relative' }}>
-              <InputGroup>
-                <Form.Control
-                  type="text"
-                  placeholder={lang === 'en' ? 'Car park name' : lang === 'tc' ? '停車場名稱' : '停车场名称'}
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setSearchFocused(false)}
-                  style={{ borderRight: 0, borderRadius: '0.375rem 0 0 0.375rem', fontWeight: 500 }}
-                />
-                {search && (
-                  <Button variant="outline-secondary" onClick={() => setSearch('')} style={{ borderRadius: '0 0.375rem 0.375rem 0' }}>
-                    {lang === 'en' ? 'Clear' : lang === 'tc' ? '清除' : '清除'}
-                  </Button>
-                )}
-              </InputGroup>
-              {searchFocused && nameSuggestions.length > 0 && (
-                <ListGroup className="name-suggest">
-                  {nameSuggestions.map((carpark) => (
-                    <ListGroup.Item
-                      action
-                      key={carpark.park_Id}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        setSearch(carpark.name[lang] || carpark.name.en || '');
-                        setSearchFocused(false);
-                      }}
-                    >
-                      {carpark.name[lang] || carpark.name.en}
-                    </ListGroup.Item>
-                  ))}
-                </ListGroup>
-              )}
-            </div>
-          </Form.Group>
-        </Col>
       </Row>
+      <Form.Check
+        className="mb-3"
+        type="checkbox"
+        id="only-with-space"
+        checked={onlyWithSpace}
+        onChange={e => setOnlyWithSpace(e.target.checked)}
+        label={lang === 'en' ? 'Only open parks with a space' : lang === 'tc' ? '只顯示營業中而且有位' : '只显示营业中而且有位'}
+      />
       {geoError && <Alert variant="warning">{geoError}</Alert>}
       {origin && (
         <Alert variant="info">

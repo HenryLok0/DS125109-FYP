@@ -348,3 +348,8 @@ body.dark-mode .name-suggest .list-group-item {
   color: #e0e0e0;
   border-color: #3a4150;
 }
+
+.name-suggest-address {
+  color: #1976d2;
+  font-weight: 600;
+}
