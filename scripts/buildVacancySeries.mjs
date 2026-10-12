@@ -5,7 +5,7 @@
 */
 
 import { execFile } from 'child_process';
-import { mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
+import { mkdir, open, readdir, readFile, rm, writeFile } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
@@ -116,6 +116,24 @@ async function downloadDay(day, destination) {
   await writeFile(destination, Buffer.from(await response.arrayBuffer()));
 }
 
+async function extractArchive(archivePath, destination) {
+  const handle = await open(archivePath, 'r');
+  const header = Buffer.alloc(4);
+  await handle.read(header, 0, 4, 0);
+  await handle.close();
+  const isZip = header[0] === 0x50 && header[1] === 0x4b;
+  if (isZip) {
+    // The daily archive is a zip. GNU tar on GitHub Actions cannot extract it.
+    try {
+      await execFileAsync('unzip', ['-qo', archivePath, '-d', destination]);
+      return;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  await execFileAsync('tar', ['-xf', archivePath, '-C', destination]);
+}
+
 async function main() {
   assertGapFill();
   const days = await listDailyArchives();
@@ -137,7 +155,7 @@ async function main() {
     await downloadDay(day, zipPath);
     await rm(extractDir, { recursive: true, force: true });
     await mkdir(extractDir, { recursive: true });
-    await execFileAsync('tar', ['-xf', zipPath, '-C', extractDir]);
+    await extractArchive(zipPath, extractDir);
     const files = await walkJson(extractDir);
     console.log(`  ${files.length} snapshots`);
     for (const filePath of files) {
