@@ -267,15 +267,21 @@ export function evaluateForecasts(values, trainRatio = 0.6) {
 }
 
 function seasonalWindow(values, originMs, nowMs) {
+  // Prefer the same clock yesterday. If that day is not in the file yet, walk
+  // back one day at a time so a first visit can still forecast from the archive.
   const step = STEP_MINUTES * 60 * 1000;
-  const index = Math.round((nowMs - 24 * 60 * 60 * 1000 - originMs) / step);
-  for (let shift = 0; shift <= 4; shift += 1) {
-    const candidates = shift === 0 ? [index] : [index - shift, index + shift];
-    for (const candidate of candidates) {
-      if (candidate < 7 || candidate >= values.length) continue;
-      const window = values.slice(candidate - 7, candidate + 1);
-      if (window.length === 8 && window.every((value) => value != null)) {
-        return { window, index: candidate };
+  const dayMs = 24 * 60 * 60 * 1000;
+  const maxDays = Math.floor((nowMs - originMs) / dayMs);
+  for (let daysAgo = 1; daysAgo <= maxDays; daysAgo += 1) {
+    const index = Math.round((nowMs - daysAgo * dayMs - originMs) / step);
+    for (let shift = 0; shift <= 4; shift += 1) {
+      const candidates = shift === 0 ? [index] : [index - shift, index + shift];
+      for (const candidate of candidates) {
+        if (candidate < 7 || candidate >= values.length) continue;
+        const window = values.slice(candidate - 7, candidate + 1);
+        if (window.length === 8 && window.every((value) => value != null)) {
+          return { window, index: candidate, daysAgo };
+        }
       }
     }
   }
@@ -331,6 +337,7 @@ export function forecastFromSeries({
   let window = liveWindow;
   let anchor = 'live';
   let alignedAt = null;
+  let daysAgo = null;
   if (!window && values?.length) {
     const seasonal = seasonalWindow(values, originMs, anchorTime);
     if (seasonal) {
@@ -339,6 +346,7 @@ export function forecastFromSeries({
       window[window.length - 1] = current.value;
       anchor = 'seasonal';
       alignedAt = originMs + seasonal.index * STEP_MINUTES * 60 * 1000;
+      daysAgo = seasonal.daysAgo;
     }
   }
   const validPoints = values ? values.filter((value) => value != null).length : 0;
@@ -357,6 +365,7 @@ export function forecastFromSeries({
     modelName: model.name,
     anchor,
     alignedAt,
+    daysAgo,
     current: current.value,
     predicted,
     baseline,

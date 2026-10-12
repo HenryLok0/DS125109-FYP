@@ -18,7 +18,9 @@ const COPY = {
     now: 'Now',
     predicted: 'In 30 minutes',
     baseline: 'Previous-hour average',
-    seasonal: 'Estimated from the same time yesterday.',
+    seasonal: (days) => (days > 1
+      ? `Estimated from the same time ${days} days ago.`
+      : 'Estimated from the same time yesterday.'),
     live: 'Estimated from the last hour on this device.',
     compared: (mae, base, hit, baseHit) => `On past data, this forecast missed by ${mae} spaces on average, and the previous-hour average missed by ${base}. Within 5 spaces: ${hit}% versus ${baseHit}%.`,
     foot: 'Updates every 60 seconds.',
@@ -34,7 +36,9 @@ const COPY = {
     now: '而家',
     predicted: '30 分鐘後',
     baseline: '上一小時平均',
-    seasonal: '跟住昨日同一時間的變化估計。',
+    seasonal: (days) => (days > 1
+      ? `跟住 ${days} 日前同一時間的變化估計。`
+      : '跟住昨日同一時間的變化估計。'),
     live: '跟住最近一小時的變化估計。',
     compared: (mae, base, hit, baseHit) => `過去試過：預測平均差 ${mae} 個位，上一小時平均差 ${base} 個位。差 5 個位以內，預測 ${hit}%，上一小時平均 ${baseHit}%。`,
     foot: '每 60 秒更新。',
@@ -50,7 +54,9 @@ const COPY = {
     now: '现在',
     predicted: '30 分钟后',
     baseline: '上一小时平均',
-    seasonal: '跟着昨日同一时间的变化估计。',
+    seasonal: (days) => (days > 1
+      ? `跟着 ${days} 日前同一时间的变化估计。`
+      : '跟着昨日同一时间的变化估计。'),
     live: '跟着最近一小时的变化估计。',
     compared: (mae, base, hit, baseHit) => `过去试过：预测平均差 ${mae} 个位，上一小时平均差 ${base} 个位。差 5 个位以内，预测 ${hit}%，上一小时平均 ${baseHit}%。`,
     foot: '每 60 秒更新。',
@@ -159,7 +165,7 @@ function VacancyForecast({ parkId, vacancy, lang = 'en', refreshedAt }) {
           </div>
         </div>
         <Sparkline points={result.spark} />
-        <p className="forecast-note">{result.anchor === 'live' ? copy.live : copy.seasonal}</p>
+        <p className="forecast-note">{result.anchor === 'live' ? copy.live : copy.seasonal(result.daysAgo)}</p>
         {metrics && (
           <p className="forecast-note">
             {copy.compared(

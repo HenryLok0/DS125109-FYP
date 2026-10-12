@@ -50,8 +50,28 @@ test('applies yesterday’s 30-minute change to the vacancy published now', () =
 
   expect(result.ok).toBe(true);
   expect(result.anchor).toBe('seasonal');
+  expect(result.daysAgo).toBe(1);
   expect(result.predicted).toBe(44);
   expect(result.baseline).toBe(37);
+});
+
+test('forecasts on a first visit from the latest same clock when yesterday is missing', () => {
+  const originMs = Date.parse('2026-10-01T00:00:00+08:00');
+  const values = Array.from({ length: 96 * 2 }, (_, index) => 10 + (index % 96));
+  const nowMs = originMs + (5 * 24 * 60 * 60 * 1000) + (12 * 60 * 60 * 1000);
+  const result = forecastFromSeries({
+    values,
+    originMs,
+    current: { value: 20, timeMs: nowMs },
+    storedPoints: [],
+    nowMs,
+    withMetrics: false,
+  });
+
+  expect(result.ok).toBe(true);
+  expect(result.anchor).toBe('seasonal');
+  expect(result.daysAgo).toBe(4);
+  expect(result.predicted).toBeGreaterThanOrEqual(0);
 });
 
 test('forecasts a real archived car park for 16:00 on the day after the series', () => {
