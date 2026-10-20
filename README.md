@@ -1,71 +1,26 @@
-# EaseParkHK
+# EaseParkHK 泊易香港
 
-Th is a React version for https://github.com/HenryLok0/IT114115-FYP-EaseParkHK
+香港停車場空位、路旁咪錶、交通快拍、交通通告、分析同預測。網站係靜態頁，可以直接用 GitHub Pages 托管。
 
-[![React 18+](https://img.shields.io/badge/React-18%2B-61dafb?logo=react&logoColor=222)](https://react.dev/)
-[![Powered by data.gov.hk](https://img.shields.io/badge/Powered%20by-data.gov.hk-blue)](https://data.gov.hk/en/)
-[![GPL-3.0 License](https://img.shields.io/github/license/HenryLok0/EaseParkHK?color=blue)](https://github.com/HenryLok0/EaseParkHK/blob/main/LICENSE)
+## 打開網站
 
-[![Code Size](https://img.shields.io/github/languages/code-size/HenryLok0/EaseparkHK?style=flat-square&logo=github)](https://github.com/HenryLok0/EaseParkHK)
+1. 把這個資料夾推上 GitHub 的 `main` 分支。
+2. 入倉庫 **Settings → Pages**。
+3. **Build and deployment** 的 Source 選 **GitHub Actions**。
+4. 推上 `main` 之後，Actions 會發布網站。正式網址係 [https://easeparkhk.henrylok.me/](https://easeparkhk.henrylok.me/)。
 
----
+所有連結都用相對路徑，所以放在專案網站的子路徑都開到。
 
-## EaseParkHK – Hong Kong Parking & Traffic Cameras
+## 資料
 
-EaseParkHK is a modern, mobile-friendly web platform for quickly browsing parking lot information and real-time traffic cameras across all districts of Hong Kong.
+停車場、空位、咪錶、快拍同通告來自運輸署／資料一線通。另外加咗香港天文台實時天氣、警告同九日預報，以及 1823 公眾假期（如果瀏覽器讀不到假期 API，就用 `data/holidays.json` 呢份官方日曆快照）。
 
-**Try it now:**  
-https://henrylok0.github.io/DS125109-FYP/
+街段統計的 xlsx 同 CSV 係同一份資料。頁面讀 CSV，因為靜態網頁可以直接解析。
 
----
+## 預測同助手
 
-### Key Features
+預測係「季節收縮 + 阻尼趨勢」：用每小時先驗曲線，再按現時空位縮放。假期、星期日、酷熱同下雨會輕輕提高占用先驗。瀏覽器會把空位快照留喺本機，之後先用實測校正。
 
-- Browse by Region & District:  
-  Easily find parking lots and traffic cameras by Hong Kong Island, Kowloon, New Territories, and all sub-districts.
-- Parking Lot Details:  
-  Click any parking lot for address, available spaces, and more.
-- Live Traffic Cameras:  
-  View real-time camera images, with map popups for each location.
-- Multi-language & Dark Mode:  
-  Switch between English, Traditional Chinese, and Simplified Chinese. Toggle light/dark themes.
-- Responsive Design:  
-  Works great on both mobile and desktop browsers.
-- No App Needed:  
-  Just open the link in your browser—no installation required.
+助手唔會呼叫外部人工智能服務。佢喺瀏覽器把句子拆成地區、車種同條件，再用可以解釋的分數排序。
 
----
-
-## Getting Started (for Operators/Developers)
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/HenryLok0/EaseparkHK
-   cd easeparkhk/
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm start
-   ```
-   Then open [http://localhost:3000](http://localhost:3000) in your browser.
-
-4. Deploy to GitHub Pages:
-   ```bash
-   npm run deploy
-   ```
-
----
-
-## Contributing
-
-Contributions are welcome! Please submit a pull request or open an issue for suggestions or improvements.
-
-## License
-
-This project is licensed under the GPL-3.0 License. See the LICENSE file for details.
+方法、限制同每條資料網址都寫喺網站的「說明」頁。
