@@ -1,20 +1,22 @@
+# Publishes the static React build in docs/ to GitHub Pages.
 name: Deploy GitHub Pages
 
 on:
   push:
     branches: [main]
+  schedule:
+    # 08:00 in Hong Kong, after yesterday's daily archive is published.
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
-  # Needed so the workflow can turn Pages on the first time.
-  administration: write
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -23,20 +25,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          # Create the Pages site when the repository has never enabled it.
-          enablement: true
-
-      - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run series
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
-
-      - name: Deploy
-        id: deployment
+          path: build
+      - id: deployment
         uses: actions/deploy-pages@v4
